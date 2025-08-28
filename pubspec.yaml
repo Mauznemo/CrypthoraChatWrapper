@@ -1,0 +1,28 @@
+name: crypthora_chat_wrapper
+description: "Wrapper for CrypthoraChat"
+publish_to: 'none'
+
+version: 0.0.1+1
+
+environment:
+  sdk: ^3.8.1
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+  flutter_foreground_task: ^9.1.0
+  web_socket_channel: ^3.0.3
+  flutter_local_notifications: ^19.4.1
+  shared_preferences: ^2.5.3
+  webview_flutter: ^4.13.0
+
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
+

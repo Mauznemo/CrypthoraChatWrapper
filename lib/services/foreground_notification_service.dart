@@ -54,9 +54,7 @@ class NotificationTaskHandler extends TaskHandler {
   }
 
   Future<void> _initializeNotifications() async {
-    const androidSettings = AndroidInitializationSettings(
-      '@drawable/ic_notification',
-    );
+    const androidSettings = AndroidInitializationSettings('ic_notification');
     const iosSettings = DarwinInitializationSettings();
     const settings = InitializationSettings(
       android: androidSettings,
@@ -144,6 +142,7 @@ class NotificationTaskHandler extends TaskHandler {
       channelDescription: 'Push notifications',
       importance: Importance.high,
       priority: Priority.high,
+      icon: 'ic_notification',
     );
 
     const iosDetails = DarwinNotificationDetails();

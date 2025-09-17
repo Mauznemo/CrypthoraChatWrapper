@@ -2,7 +2,7 @@ name: crypthora_chat_wrapper
 description: "Wrapper for CrypthoraChat"
 publish_to: 'none'
 
-version: 0.0.1-alpha.1+1
+version: 0.0.1-alpha.2+1
 
 environment:
   sdk: ^3.8.1

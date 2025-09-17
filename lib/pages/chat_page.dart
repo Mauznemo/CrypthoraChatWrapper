@@ -5,6 +5,7 @@ import 'package:crypthora_chat_wrapper/services/foreground_notification_service.
 import 'package:flutter/material.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
@@ -173,11 +174,11 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
   Future<void> _startForegroundTask() async {
     developer.log('Starting foreground task', name: 'main');
-    //TODO: Request permissions
-    /*
+    await Permission.notification.request();
+
     if (!await FlutterForegroundTask.isIgnoringBatteryOptimizations) {
       await FlutterForegroundTask.requestIgnoreBatteryOptimization();
-    }*/
+    }
 
     if (!await FlutterForegroundTask.isRunningService) {
       await FlutterForegroundTask.startService(

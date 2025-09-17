@@ -55,7 +55,7 @@ class NotificationTaskHandler extends TaskHandler {
 
   Future<void> _initializeNotifications() async {
     const androidSettings = AndroidInitializationSettings(
-      '@mipmap/ic_launcher',
+      '@drawable/ic_notification',
     );
     const iosSettings = DarwinInitializationSettings();
     const settings = InitializationSettings(

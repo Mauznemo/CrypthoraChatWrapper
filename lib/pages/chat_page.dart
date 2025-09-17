@@ -79,8 +79,11 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     }
 
     if (chatId != null) {
+      if (serverUrl.endsWith('/')) {
+        serverUrl = serverUrl.substring(0, serverUrl.length - 1);
+      }
       _serverUri = Uri.parse(
-        '${serverUrl}chat',
+        '$serverUrl/chat',
       ).replace(queryParameters: {'chatId': chatId});
     } else {
       _serverUri = Uri.parse(serverUrl);

@@ -21,6 +21,12 @@ class NotificationTaskHandler extends TaskHandler {
     developer.log('Notification service started', name: 'foreground_service');
     var prefs = await SharedPreferences.getInstance();
     notificationServerUrl = prefs.getString('notificationServerUrl') ?? '';
+    if (notificationServerUrl.endsWith('/')) {
+      notificationServerUrl = notificationServerUrl.substring(
+        0,
+        notificationServerUrl.length - 1,
+      );
+    }
     topic = prefs.getString('topic') ?? '';
     if (notificationServerUrl.isEmpty || topic.isEmpty) return;
     await _initializeNotifications();

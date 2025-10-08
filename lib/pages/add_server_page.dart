@@ -5,7 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class AddServerPage extends StatefulWidget {
-  const AddServerPage({super.key});
+  final bool canGoBack;
+  const AddServerPage({super.key, required this.canGoBack});
 
   @override
   State<AddServerPage> createState() => _AddServerPageState();
@@ -35,7 +36,20 @@ class _AddServerPageState extends State<AddServerPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Add Server')),
+      appBar: AppBar(
+        title: const Text('Set Server'),
+        leading: widget.canGoBack
+            ? IconButton(
+                onPressed: () {
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(builder: (context) => ChatPage()),
+                  );
+                },
+                icon: const Icon(Icons.arrow_back),
+              )
+            : null,
+      ),
       body: Center(
         child: Padding(
           padding: const EdgeInsets.all(16.0),
@@ -77,7 +91,7 @@ class _AddServerPageState extends State<AddServerPage> {
                     );
                   }
                 },
-                child: const Text('Add'),
+                child: const Text('Save'),
               ),
             ],
           ),

@@ -19,6 +19,8 @@ class ChatPage extends StatefulWidget {
 class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   InAppWebViewController? controller;
   bool isReady = false;
+  bool _loadError = false;
+  String _errorMessage = '';
 
   InAppWebViewSettings get _webViewSettings => InAppWebViewSettings(
     // Performance optimizations
@@ -62,7 +64,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     if (serverUrl == null || notificationServerUrl == null || topic == null) {
       Navigator.pushReplacement(
         context,
-        MaterialPageRoute(builder: (context) => AddServerPage()),
+        MaterialPageRoute(
+          builder: (context) => AddServerPage(canGoBack: false),
+        ),
       );
       return;
     }
@@ -92,8 +96,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     setState(() {
       isReady = true;
     });
-    _initForegroundTask();
-    _startForegroundTask();
+    // _initForegroundTask();
+    // _startForegroundTask();
   }
 
   @override
@@ -139,10 +143,18 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   }
 
   void _injectFlutterInfo(String topic) {
+    final padding = MediaQuery.of(context).padding;
+
     final polyfillScript =
         '''
             window.isFlutterWebView = true;
             window.ntfyTopic = "$topic";
+            window.flutterSafeAreaInsets = {
+              top: ${padding.top},
+              bottom: ${padding.bottom},
+              left: ${padding.left},
+              right: ${padding.right}
+            }
           ''';
 
     controller?.evaluateJavascript(source: polyfillScript);
@@ -201,69 +213,125 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   @override
   Widget build(BuildContext context) {
     return WithForegroundTask(
-      child: Scaffold(
-        resizeToAvoidBottomInset: true,
-        appBar: AppBar(
-          title: Text('CrypthoraChat'),
-          actions: [
-            IconButton(
-              icon: Icon(Icons.edit),
-              onPressed: () {
-                Navigator.pushReplacement(
-                  context,
-                  MaterialPageRoute(builder: (context) => AddServerPage()),
-                );
-              },
-            ),
-            IconButton(
-              icon: Icon(Icons.refresh),
-              onPressed: () {
-                controller?.reload();
-              },
-            ),
-          ],
-        ),
-        body: SafeArea(
-          child: isReady
-              ? InAppWebView(
-                  initialUrlRequest: URLRequest(
-                    url: WebUri(_serverUri.toString()),
-                  ),
-                  initialSettings: _webViewSettings,
-                  onWebViewCreated: (InAppWebViewController webController) {
-                    controller = webController;
-                  },
-                  onLoadStop:
-                      (
-                        InAppWebViewController webController,
-                        WebUri? url,
-                      ) async {
-                        var prefs = await SharedPreferences.getInstance();
-                        String? topic = prefs.getString('topic');
-                        if (topic != null) {
-                          _injectFlutterInfo(topic);
+      child: !_loadError
+          ? Scaffold(
+              body: isReady
+                  ? InAppWebView(
+                      initialUrlRequest: URLRequest(
+                        url: WebUri(_serverUri.toString()),
+                      ),
+                      initialSettings: _webViewSettings,
+                      onWebViewCreated: (InAppWebViewController webController) {
+                        controller = webController;
+                        controller?.addJavaScriptHandler(
+                          handlerName: 'openSettings',
+                          callback: (args) async {
+                            Navigator.pushReplacement(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) =>
+                                    AddServerPage(canGoBack: true),
+                              ),
+                            );
+                          },
+                        );
+                      },
+                      onLoadStop:
+                          (
+                            InAppWebViewController webController,
+                            WebUri? url,
+                          ) async {
+                            var prefs = await SharedPreferences.getInstance();
+                            String? topic = prefs.getString('topic');
+                            if (topic != null) {
+                              _injectFlutterInfo(topic);
+                            }
+                          },
+                      onReceivedError: (controller, request, error) => {
+                        setState(() {
+                          _loadError = true;
+                          _errorMessage = error.description;
+                        }),
+                      },
+                      shouldOverrideUrlLoading:
+                          (controller, navigationAction) async {
+                            return NavigationActionPolicy.ALLOW;
+                          },
+                      onPermissionRequest: (controller, permissionRequest) async {
+                        developer.log(
+                          'Permission request: ${permissionRequest.resources}',
+                        );
+
+                        if (permissionRequest.resources.contains(
+                          PermissionResourceType.CAMERA,
+                        )) {
+                          final status = await Permission.camera.request();
+                          return PermissionResponse(
+                            resources: permissionRequest.resources,
+                            action: status == PermissionStatus.granted
+                                ? PermissionResponseAction.GRANT
+                                : PermissionResponseAction.DENY,
+                          );
                         }
+
+                        return PermissionResponse(
+                          resources: permissionRequest.resources,
+                          action: PermissionResponseAction.DENY,
+                        );
                       },
-                  // Optional: Handle JavaScript messages
-                  // onConsoleMessage: (controller, consoleMessage) {
-                  //   developer.log(consoleMessage.message, name: 'WebView Console');
-                  // },
-                  shouldOverrideUrlLoading:
-                      (controller, navigationAction) async {
-                        return NavigationActionPolicy.ALLOW;
+                    )
+                  : Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          CircularProgressIndicator(),
+                          Text('Loading webview...'),
+                        ],
+                      ),
+                    ),
+            )
+          : Scaffold(
+              resizeToAvoidBottomInset: true,
+              appBar: AppBar(title: Text('CrypthoraChat Wrapper')),
+              body: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      'Failed to load webview',
+                      style: TextStyle(fontSize: 24),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(_errorMessage, style: TextStyle(fontSize: 16)),
+                    const SizedBox(height: 5),
+                    Text('Server: $_serverUri', style: TextStyle(fontSize: 16)),
+                    const SizedBox(height: 56),
+                    FilledButton(
+                      onPressed: () {
+                        Navigator.pushReplacement(
+                          context,
+                          MaterialPageRoute(builder: (context) => ChatPage()),
+                        );
                       },
-                )
-              : Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      CircularProgressIndicator(),
-                      Text('Loading webview...'),
-                    ],
-                  ),
+                      child: Text('Retry'),
+                    ),
+                    const SizedBox(height: 5),
+                    FilledButton(
+                      onPressed: () {
+                        Navigator.pushReplacement(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) =>
+                                AddServerPage(canGoBack: true),
+                          ),
+                        );
+                      },
+                      child: Text('Change server address'),
+                    ),
+                  ],
                 ),
-        ),
-      ),
+              ),
+            ),
     );
   }
 }

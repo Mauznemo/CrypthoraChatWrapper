@@ -2,8 +2,10 @@ import 'dart:developer' as developer;
 
 import 'package:crypthora_chat_wrapper/pages/add_server_page.dart';
 import 'package:crypthora_chat_wrapper/services/foreground_notification_service.dart';
+import 'package:crypthora_chat_wrapper/utils/i18n_helper.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+import 'package:flutter_i18n/flutter_i18n.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -60,6 +62,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     String? serverUrl = prefs.getString('serverUrl');
     String? notificationServerUrl = prefs.getString('notificationServerUrl');
     String? topic = prefs.getString('topic');
+
+    await I18nHelper.saveCurrentLocale(context);
 
     if (serverUrl == null || notificationServerUrl == null || topic == null) {
       Navigator.pushReplacement(
@@ -202,14 +206,26 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       await FlutterForegroundTask.startService(
         serviceId: 256, // Unique service ID
         serviceTypes: [ForegroundServiceTypes.remoteMessaging],
-        notificationTitle: 'Connected',
-        notificationText: 'Receiving real-time notifications',
+        notificationTitle: FlutterI18n.translate(
+          context,
+          'notifications.service.connected',
+        ),
+        notificationText: FlutterI18n.translate(
+          context,
+          'notifications.service.receiving',
+        ),
         callback: startCallback,
       );
     } else {
       await FlutterForegroundTask.updateService(
-        notificationTitle: 'Connected',
-        notificationText: 'Receiving real-time notifications',
+        notificationTitle: FlutterI18n.translate(
+          context,
+          'notifications.service.connected',
+        ),
+        notificationText: FlutterI18n.translate(
+          context,
+          'notifications.service.receiving',
+        ),
       );
     }
   }
@@ -296,7 +312,12 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           CircularProgressIndicator(),
-                          Text('Loading webview...'),
+                          Text(
+                            FlutterI18n.translate(
+                              context,
+                              'app.loading-webview',
+                            ),
+                          ),
                         ],
                       ),
                     ),
@@ -309,7 +330,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
-                      'Failed to load webview',
+                      FlutterI18n.translate(
+                        context,
+                        'app.failed-to-load-webview',
+                      ),
                       style: TextStyle(fontSize: 24),
                     ),
                     const SizedBox(height: 16),
@@ -324,7 +348,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                           MaterialPageRoute(builder: (context) => ChatPage()),
                         );
                       },
-                      child: Text('Retry'),
+                      child: Text(FlutterI18n.translate(context, 'app.retry')),
                     ),
                     const SizedBox(height: 5),
                     FilledButton(
@@ -337,7 +361,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                           ),
                         );
                       },
-                      child: Text('Change server address'),
+                      child: Text(
+                        FlutterI18n.translate(context, 'app.change-server'),
+                      ),
                     ),
                   ],
                 ),

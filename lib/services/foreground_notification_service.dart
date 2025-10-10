@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'dart:developer' as developer;
+import 'package:crypthora_chat_wrapper/utils/i18n_helper.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
+import 'package:flutter_i18n/flutter_i18n.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:web_socket_channel/io.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -19,6 +21,7 @@ class NotificationTaskHandler extends TaskHandler {
   Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
     developer.log('Notification service started', name: 'foreground_service');
     var prefs = await SharedPreferences.getInstance();
+    I18nHelper.load(prefs.getString('locale') ?? 'en');
     notificationServerUrl = prefs.getString('notificationServerUrl') ?? '';
     if (notificationServerUrl.endsWith('/')) {
       notificationServerUrl = notificationServerUrl.substring(
@@ -62,6 +65,19 @@ class NotificationTaskHandler extends TaskHandler {
         'Connection lost, reconnecting in ${60 - disconnectedFor} seconds',
         name: 'foreground_service',
       );
+
+      final notificationTitle = I18nHelper.t(
+        'notifications.service.disconnected',
+      );
+      final notificationText = I18nHelper.t(
+        'notifications.service.trying-to-reconnect',
+      );
+
+      FlutterForegroundTask.updateService(
+        notificationTitle: notificationTitle,
+        notificationText: notificationText,
+      );
+
       if (disconnectedFor > 60) {
         _connectToNtfy();
       }
@@ -126,9 +142,16 @@ class NotificationTaskHandler extends TaskHandler {
 
             String message = '';
             if (groupType == 'group') {
-              message = 'New Message from $username in $chatName';
+              final translation = I18nHelper.t(
+                'notifications.new-message-group',
+                {'username': username, 'chatName': chatName},
+              );
+              message = translation;
             } else {
-              message = 'New Message from $username';
+              final translation = I18nHelper.t('notifications.new-message-dm', {
+                'username': username,
+              });
+              message = translation;
             }
 
             await _showNotification(username, message, chatId);

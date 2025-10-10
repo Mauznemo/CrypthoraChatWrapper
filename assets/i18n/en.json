@@ -1,0 +1,26 @@
+{
+    "notifications": {
+        "new-message-group": "New Message from {username} in {chatName}",
+        "new-message-dm": "New Message from {username}",
+        "service": {
+            "connected": "Connected",
+            "disconnected": "Disconnected",
+            "trying-to-reconnect": "Trying to reconnect...",
+            "receiving": "Receiving real-time notifications"
+        }
+    },
+    "app": {
+        "loading-webview": "Loading webview...",
+        "failed-to-load-webview": "Failed to load webview",
+        "retry": "Retry",
+        "change-server": "Change server address"
+    },
+    "server-settings": {
+        "set-server": "Set Server",
+        "server-url": "Server URL",
+        "notification-server-url": "Notification Server URL"
+    },
+    "common": {
+        "save": "Save"
+    }
+}

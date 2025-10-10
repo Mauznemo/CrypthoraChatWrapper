@@ -1,7 +1,11 @@
 import 'package:crypthora_chat_wrapper/pages/chat_page.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_i18n/flutter_i18n.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+
   runApp(
     MaterialApp(
       home: ChatPage(),
@@ -22,6 +26,31 @@ void main() {
         ),
       ),
       themeMode: ThemeMode.system,
+      localizationsDelegates: [
+        FlutterI18nDelegate(
+          translationLoader: FileTranslationLoader(
+            basePath: 'assets/i18n',
+            fallbackFile: 'en',
+            useCountryCode: false,
+          ),
+          missingTranslationHandler: (key, locale) {
+            print('Missing translation: $key for locale: $locale');
+          },
+        ),
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+
+      supportedLocales: const [Locale('en'), Locale('de')],
+      localeResolutionCallback: (locale, supportedLocales) {
+        for (var supportedLocale in supportedLocales) {
+          if (supportedLocale.languageCode == locale?.languageCode) {
+            return supportedLocale;
+          }
+        }
+        return supportedLocales.first;
+      },
     ),
   );
 }

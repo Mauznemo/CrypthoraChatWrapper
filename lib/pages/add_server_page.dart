@@ -2,6 +2,7 @@ import 'dart:math';
 
 import 'package:crypthora_chat_wrapper/pages/chat_page.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_i18n/flutter_i18n.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class AddServerPage extends StatefulWidget {
@@ -37,7 +38,9 @@ class _AddServerPageState extends State<AddServerPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Set Server'),
+        title: Text(
+          FlutterI18n.translate(context, 'server-settings.set-server'),
+        ),
         leading: widget.canGoBack
             ? IconButton(
                 onPressed: () {
@@ -57,16 +60,22 @@ class _AddServerPageState extends State<AddServerPage> {
             children: [
               TextField(
                 controller: _serverUrlController,
-                decoration: const InputDecoration(
-                  labelText: 'Server URL',
+                decoration: InputDecoration(
+                  labelText: FlutterI18n.translate(
+                    context,
+                    'server-settings.server-url',
+                  ),
                   hintText: 'https://chat.my-server.com',
                 ),
               ),
               TextField(
                 controller: _notificationServerUrlController,
 
-                decoration: const InputDecoration(
-                  labelText: 'Notification Server URL',
+                decoration: InputDecoration(
+                  labelText: FlutterI18n.translate(
+                    context,
+                    'server-settings.notification-server-url',
+                  ),
                   hintText: 'wss://ntfy.my-server.com',
                 ),
               ),
@@ -91,7 +100,7 @@ class _AddServerPageState extends State<AddServerPage> {
                     );
                   }
                 },
-                child: const Text('Save'),
+                child: Text(FlutterI18n.translate(context, 'common.save')),
               ),
             ],
           ),

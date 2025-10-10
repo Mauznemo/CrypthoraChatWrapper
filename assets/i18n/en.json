@@ -5,8 +5,10 @@
         "service": {
             "connected": "Connected",
             "disconnected": "Disconnected",
+            "receiving": "Receiving real-time notifications",
             "trying-to-reconnect": "Trying to reconnect...",
-            "receiving": "Receiving real-time notifications"
+            "starting": "Starting",
+            "starting-text": "Starting notification service"
         }
     },
     "app": {

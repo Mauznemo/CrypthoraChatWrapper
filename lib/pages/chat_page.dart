@@ -208,26 +208,26 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         serviceTypes: [ForegroundServiceTypes.remoteMessaging],
         notificationTitle: FlutterI18n.translate(
           context,
-          'notifications.service.connected',
+          'notifications.service.starting',
         ),
         notificationText: FlutterI18n.translate(
           context,
-          'notifications.service.receiving',
+          'notifications.service.starting-text',
         ),
         callback: startCallback,
       );
-    } else {
-      await FlutterForegroundTask.updateService(
-        notificationTitle: FlutterI18n.translate(
-          context,
-          'notifications.service.connected',
-        ),
-        notificationText: FlutterI18n.translate(
-          context,
-          'notifications.service.receiving',
-        ),
-      );
-    }
+    } //else {
+    //   await FlutterForegroundTask.updateService(
+    //     notificationTitle: FlutterI18n.translate(
+    //       context,
+    //       'notifications.service.connected',
+    //     ),
+    //     notificationText: FlutterI18n.translate(
+    //       context,
+    //       'notifications.service.receiving',
+    //     ),
+    //   );
+    // }
   }
 
   Future<void> _stopForegroundTask() async {

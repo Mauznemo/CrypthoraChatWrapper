@@ -1,20 +1,19 @@
 import 'dart:convert';
 import 'dart:developer' as developer;
-import 'package:crypthora_chat_wrapper/pages/chat_page.dart';
-import 'package:flutter/material.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:web_socket_channel/web_socket_channel.dart';
+import 'package:web_socket_channel/io.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 class NotificationTaskHandler extends TaskHandler {
   String notificationServerUrl = '';
   String topic = '';
-  final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
-  WebSocketChannel? _channel;
+  IOWebSocketChannel? _channel;
   final FlutterLocalNotificationsPlugin _notifications =
       FlutterLocalNotificationsPlugin();
+  DateTime? _lastActivity;
+  int _notificationId = 0;
 
   @override
   Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
@@ -28,34 +27,57 @@ class NotificationTaskHandler extends TaskHandler {
       );
     }
     topic = prefs.getString('topic') ?? '';
-    if (notificationServerUrl.isEmpty || topic.isEmpty) return;
+    if (notificationServerUrl.isEmpty || topic.isEmpty) {
+      developer.log(
+        'Missing server URL or topic, stopping service',
+        name: 'foreground_service',
+      );
+      return;
+    }
+    developer.log(
+      'WS URL: $notificationServerUrl/$topic/ws',
+      name: 'foreground_service',
+    );
     await _initializeNotifications();
     _connectToNtfy();
   }
 
   @override
   Future<void> onRepeatEvent(DateTime timestamp) async {
-    // This is called periodically - use it to check connection health
-    if (_channel == null) {
+    // Check connection health periodically
+    final isChannelOpen = _isChannelOpen();
+
+    // Wait 60 to try reconnecting
+    if (isChannelOpen) {
       developer.log(
-        'WebSocket disconnected, reconnecting...',
+        'WebSocket is open, updating last activity',
         name: 'foreground_service',
       );
-      _connectToNtfy();
+      _lastActivity = DateTime.now();
+    } else {
+      final disconnectedFor = _lastActivity != null
+          ? DateTime.now().difference(_lastActivity!).inSeconds
+          : 0;
+      developer.log(
+        'Connection lost, reconnecting in ${60 - disconnectedFor} seconds',
+        name: 'foreground_service',
+      );
+      if (disconnectedFor > 60) {
+        _connectToNtfy();
+      }
     }
+  }
 
-    // Optional: Send a ping to keep connection alive
-    try {
-      _channel?.sink.add('ping');
-    } catch (e) {
-      developer.log('Failed to ping WebSocket: $e', name: 'foreground_service');
-      _connectToNtfy();
-    }
+  bool _isChannelOpen() {
+    if (_channel == null) return false;
+
+    // closeCode is null while the socket is open
+    return _channel!.closeCode == null;
   }
 
   @override
   Future<void> onDestroy(DateTime timestamp, bool _) async {
-    print('Notification service destroyed');
+    developer.log('Notification service destroyed', name: 'foreground_service');
     _channel?.sink.close();
   }
 
@@ -77,15 +99,20 @@ class NotificationTaskHandler extends TaskHandler {
   void _connectToNtfy() {
     try {
       _channel?.sink.close(); // Close existing connection if any
-      _channel = WebSocketChannel.connect(
+      _channel = IOWebSocketChannel.connect(
         Uri.parse('$notificationServerUrl/$topic/ws'),
       );
 
       _channel!.stream.listen(
         (data) async {
+          developer.log('Received data: $data', name: 'foreground_service');
           try {
-            // Skip ping responses
-            if (data == 'pong' || data.toString().trim().isEmpty) {
+            // Skip empty messages
+            if (data.toString().trim().isEmpty) {
+              developer.log(
+                'Empty message received, skipping',
+                name: 'foreground_service',
+              );
               return;
             }
 
@@ -104,7 +131,7 @@ class NotificationTaskHandler extends TaskHandler {
               message = 'New Message from $username';
             }
 
-            await _showNotification('New Message', message, chatId);
+            await _showNotification(username, message, chatId);
           } catch (e) {
             developer.log(
               'Error parsing notification: $e',
@@ -115,7 +142,6 @@ class NotificationTaskHandler extends TaskHandler {
         onError: (error) {
           developer.log('WebSocket error: $error', name: 'foreground_service');
           _channel = null;
-          // Don't reconnect immediately here - let onRepeatEvent handle it
         },
         onDone: () {
           developer.log(
@@ -123,10 +149,10 @@ class NotificationTaskHandler extends TaskHandler {
             name: 'foreground_service',
           );
           _channel = null;
-          // Don't reconnect immediately here - let onRepeatEvent handle it
         },
       );
 
+      _lastActivity = DateTime.now(); // Set initial activity on connect
       developer.log('Connected to ntfy WebSocket', name: 'foreground_service');
     } catch (e) {
       developer.log(
@@ -134,6 +160,7 @@ class NotificationTaskHandler extends TaskHandler {
         name: 'foreground_service',
       );
       _channel = null;
+      _lastActivity = null;
     }
   }
 
@@ -159,27 +186,18 @@ class NotificationTaskHandler extends TaskHandler {
     );
 
     await _notifications.show(
-      DateTime.now().millisecond,
+      _notificationId++,
       title,
       body,
       details,
       payload: chatId,
     );
   }
-
-  // @override
-  // void onNotificationPressed() {
-  //   // Handle notification tap
-  //   FlutterForegroundTask.launchApp();
-  // }
 }
 
 @pragma('vm:entry-point')
 void onDidReceiveNotificationResponse(NotificationResponse response) async {
   developer.log('Notification response: $response', name: 'foreground_service');
-  // if (response.payload != null && response.payload!.isNotEmpty) {
-  //   _onNotificationPressed(response.payload!);
-  // }
 }
 
 @pragma('vm:entry-point')
@@ -188,15 +206,4 @@ void notificationTapBackground(NotificationResponse response) async {
     'Notification Background response: $response',
     name: 'foreground_service',
   );
-  // if (response.payload != null && response.payload!.isNotEmpty) {
-  //   _onNotificationPressed(response.payload!);
-  // }
 }
-
-  // void _onNotificationPressed(String chatId) {
-  //   developer.log('Notification pressed: $chatId', name: 'foreground_service');
-  //   navigatorKey.currentState?.pushAndRemoveUntil(
-  //     MaterialPageRoute(builder: (_) => ChatPage(chatId: chatId)),
-  //     (route) => false,
-  //   );
-  // }

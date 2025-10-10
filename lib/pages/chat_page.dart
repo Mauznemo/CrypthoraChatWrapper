@@ -96,8 +96,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     setState(() {
       isReady = true;
     });
-    // _initForegroundTask();
-    // _startForegroundTask();
+    _initForegroundTask();
+    _startForegroundTask();
   }
 
   @override
@@ -178,8 +178,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       ),
       foregroundTaskOptions: ForegroundTaskOptions(
         eventAction: ForegroundTaskEventAction.repeat(
-          5000,
-        ), // Check every 5 seconds
+          15000,
+        ), // Increased to 15 seconds for better battery efficiency
         autoRunOnBoot: true,
         allowWakeLock: true,
         allowWifiLock: true,
@@ -189,7 +189,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
   Future<void> _startForegroundTask() async {
     developer.log('Starting foreground task', name: 'main');
-    await Permission.notification.request();
+    final status = await Permission.notification.status;
+    if (!status.isGranted) {
+      await Permission.notification.request();
+    }
 
     if (!await FlutterForegroundTask.isIgnoringBatteryOptimizations) {
       await FlutterForegroundTask.requestIgnoreBatteryOptimization();
@@ -197,17 +200,25 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
     if (!await FlutterForegroundTask.isRunningService) {
       await FlutterForegroundTask.startService(
-        serviceId: 256, // Add unique service ID
+        serviceId: 256, // Unique service ID
+        serviceTypes: [ForegroundServiceTypes.remoteMessaging],
         notificationTitle: 'Connected',
         notificationText: 'Receiving real-time notifications',
         callback: startCallback,
+      );
+    } else {
+      await FlutterForegroundTask.updateService(
+        notificationTitle: 'Connected',
+        notificationText: 'Receiving real-time notifications',
       );
     }
   }
 
   Future<void> _stopForegroundTask() async {
     developer.log('Stopping foreground task', name: 'main');
-    await FlutterForegroundTask.stopService();
+    if (await FlutterForegroundTask.isRunningService) {
+      await FlutterForegroundTask.stopService();
+    }
   }
 
   @override

@@ -224,7 +224,19 @@ class NotificationTaskHandler extends TaskHandler {
         );
 
         for (var line in lines) {
-          // final msg = jsonDecode(line);
+          final msg = jsonDecode(line);
+          final time = msg['time'] ?? 0;
+
+          final latestMessageTime = (lastTimestamp / 1000).floor();
+
+          if (time <= latestMessageTime) {
+            developer.log(
+              'Skipping old message $time <= $latestMessageTime = ${time <= latestMessageTime}',
+              name: 'foreground_service',
+            );
+            continue;
+          }
+
           _handleMessage(line);
         }
       }
@@ -255,11 +267,8 @@ class NotificationTaskHandler extends TaskHandler {
       final chatId = notificationData['chatId'] ?? '';
       final chatName = notificationData['chatName'] ?? '';
       final timestamp = notificationData['timestamp'];
-      final notificationTime = timestamp != null
-          ? DateTime.fromMillisecondsSinceEpoch(timestamp)
-          : DateTime.now();
 
-      _setLastMessageTimestamp(notificationTime);
+      _setLastMessageTimestamp(DateTime.fromMillisecondsSinceEpoch(timestamp));
 
       String message = '';
       if (groupType == 'group') {
@@ -275,7 +284,7 @@ class NotificationTaskHandler extends TaskHandler {
         message = translation;
       }
 
-      await _showNotification(username, message, chatId, notificationTime);
+      await _showNotification(username, message, chatId, timestamp);
     } catch (e) {
       developer.log(
         'Error parsing notification: $e',
@@ -408,7 +417,7 @@ class NotificationTaskHandler extends TaskHandler {
     String title,
     String body,
     String chatId,
-    DateTime timestamp,
+    int timestamp,
   ) async {
     final androidDetails = AndroidNotificationDetails(
       'realtime_channel',
@@ -417,7 +426,7 @@ class NotificationTaskHandler extends TaskHandler {
       importance: Importance.high,
       priority: Priority.high,
       icon: 'ic_notification',
-      when: timestamp.millisecondsSinceEpoch,
+      when: timestamp,
     );
 
     const iosDetails = DarwinNotificationDetails();

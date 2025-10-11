@@ -86,6 +86,18 @@ class NotificationTaskHandler extends TaskHandler {
   }
 
   @override
+  void onReceiveData(Object data) {
+    super.onReceiveData(data);
+
+    if (data is Map<String, dynamic>) {
+      if (data['topic'] != null) {
+        topic = data['topic'];
+        _connectToNtfy();
+      }
+    }
+  }
+
+  @override
   Future<void> onRepeatEvent(DateTime timestamp) async {
     if (_socketOpen) {
       developer.log(

@@ -1,7 +1,9 @@
 import 'dart:math';
 
 import 'package:crypthora_chat_wrapper/pages/chat_page.dart';
+import 'package:crypthora_chat_wrapper/utils/utils.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:flutter_i18n/flutter_i18n.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -17,15 +19,6 @@ class _AddServerPageState extends State<AddServerPage> {
   final TextEditingController _serverUrlController = TextEditingController();
   final TextEditingController _notificationServerUrlController =
       TextEditingController();
-
-  String generateRandomTopic([int length = 16]) {
-    const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
-    final rand = Random.secure();
-    return List.generate(
-      length,
-      (index) => chars[rand.nextInt(chars.length)],
-    ).join();
-  }
 
   @override
   void dispose() {
@@ -84,7 +77,7 @@ class _AddServerPageState extends State<AddServerPage> {
                   if (_serverUrlController.text.isEmpty) return;
                   if (_notificationServerUrlController.text.isEmpty) return;
 
-                  String topic = generateRandomTopic();
+                  String topic = Utils.generateRandomTopic();
 
                   var prefs = await SharedPreferences.getInstance();
                   await prefs.setString('serverUrl', _serverUrlController.text);
@@ -93,6 +86,7 @@ class _AddServerPageState extends State<AddServerPage> {
                     _notificationServerUrlController.text,
                   );
                   await prefs.setString('topic', topic);
+                  FlutterForegroundTask.restartService();
                   if (mounted) {
                     Navigator.push(
                       context,

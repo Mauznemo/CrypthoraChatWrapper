@@ -3,6 +3,7 @@ import 'dart:developer' as developer;
 import 'package:crypthora_chat_wrapper/pages/add_server_page.dart';
 import 'package:crypthora_chat_wrapper/services/foreground_notification_service.dart';
 import 'package:crypthora_chat_wrapper/utils/i18n_helper.dart';
+import 'package:crypthora_chat_wrapper/utils/utils.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:flutter_i18n/flutter_i18n.dart';
@@ -261,6 +262,20 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                                     AddServerPage(canGoBack: true),
                               ),
                             );
+                          },
+                        );
+
+                        controller?.addJavaScriptHandler(
+                          handlerName: 'regenerateNtfyTopic',
+                          callback: (args) async {
+                            String topic = Utils.generateRandomTopic();
+
+                            var prefs = await SharedPreferences.getInstance();
+                            await prefs.setString('topic', topic);
+
+                            FlutterForegroundTask.sendDataToTask({
+                              'topic': topic,
+                            });
                           },
                         );
                       },

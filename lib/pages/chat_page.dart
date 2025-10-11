@@ -67,6 +67,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
     _packageInfo = await PackageInfo.fromPlatform();
 
+    if (await FlutterForegroundTask.isRunningService) {
+      FlutterForegroundTask.sendDataToTask({'resetUnreadCounts': true});
+    }
+
     String? serverUrl = _prefs?.getString('serverUrl');
     String? notificationServerUrl = _prefs?.getString('notificationServerUrl');
     String? topic = _prefs?.getString('topic');

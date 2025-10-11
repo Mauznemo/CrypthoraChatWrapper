@@ -1,28 +1,28 @@
 {
-    "notifications": {
-        "new-message-group": "New Message from {username} in {chatName}",
-        "new-message-dm": "New Message from {username}",
-        "service": {
-            "connected": "Connected",
-            "disconnected": "Disconnected",
-            "receiving": "Receiving real-time notifications",
-            "trying-to-reconnect": "Trying to reconnect...",
-            "starting": "Starting",
-            "starting-text": "Starting notification service"
-        }
-    },
-    "app": {
-        "loading-webview": "Loading webview...",
-        "failed-to-load-webview": "Failed to load webview",
-        "retry": "Retry",
-        "change-server": "Change server address"
-    },
-    "server-settings": {
-        "set-server": "Set Server",
-        "server-url": "Server URL",
-        "notification-server-url": "Notification Server URL"
-    },
-    "common": {
-        "save": "Save"
+  "notifications": {
+    "new-message-group": "{count} new messages in {chatName}",
+    "new-message-dm": "{count} new messages from {username}",
+    "service": {
+      "connected": "Connected",
+      "disconnected": "Disconnected",
+      "receiving": "Receiving real-time notifications",
+      "trying-to-reconnect": "Trying to reconnect...",
+      "starting": "Starting",
+      "starting-text": "Starting notification service"
     }
+  },
+  "app": {
+    "loading-webview": "Loading webview...",
+    "failed-to-load-webview": "Failed to load webview",
+    "retry": "Retry",
+    "change-server": "Change server address"
+  },
+  "server-settings": {
+    "set-server": "Set Server",
+    "server-url": "Server URL",
+    "notification-server-url": "Notification Server URL"
+  },
+  "common": {
+    "save": "Save"
+  }
 }

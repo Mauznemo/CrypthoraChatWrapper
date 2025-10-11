@@ -29,6 +29,7 @@ class NotificationTaskHandler extends TaskHandler {
   bool _hasConnectivity = false;
   bool _connecting = false;
   int _reconnectionAttempts = 0;
+  Map<String, int> _unreadCounts = {};
 
   @override
   Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
@@ -93,6 +94,8 @@ class NotificationTaskHandler extends TaskHandler {
       if (data['topic'] != null) {
         topic = data['topic'];
         _connectToNtfy();
+      } else if (data['resetUnreadCounts'] != null) {
+        _unreadCounts = {};
       }
     }
   }
@@ -261,36 +264,71 @@ class NotificationTaskHandler extends TaskHandler {
 
       final notification = jsonDecode(data);
       if (notification['event'] != 'message') return;
-      final notificationData = jsonDecode(notification['message']);
-      final groupType = notificationData['groupType'] ?? '';
-      final username = notificationData['username'] ?? '';
-      final chatId = notificationData['chatId'] ?? '';
-      final chatName = notificationData['chatName'] ?? '';
-      final timestamp = notificationData['timestamp'];
+      final notificationPushData = jsonDecode(notification['message']);
+      final groupType = notificationPushData['groupType'] ?? '';
+      final username = notificationPushData['username'] ?? '';
+      final chatId = notificationPushData['chatId'] ?? '';
+      final chatName = notificationPushData['chatName'] ?? '';
+      final timestamp = notificationPushData['timestamp'];
 
       _setLastMessageTimestamp(DateTime.fromMillisecondsSinceEpoch(timestamp));
 
+      var unreadCount = _unreadCounts[chatId];
+
+      unreadCount ??= 0;
+
+      unreadCount++;
+
+      _unreadCounts[chatId] = unreadCount;
+
+      String title = '';
       String message = '';
       if (groupType == 'group') {
+        title = chatName;
         final translation = I18nHelper.t('notifications.new-message-group', {
-          'username': username,
+          'count': unreadCount.toString(),
           'chatName': chatName,
         });
         message = translation;
       } else {
+        title = username;
         final translation = I18nHelper.t('notifications.new-message-dm', {
+          'count': unreadCount.toString(),
           'username': username,
         });
         message = translation;
       }
 
-      await _showNotification(username, message, chatId, timestamp);
+      final notificationId = chatId.hashCode;
+
+      _scheduleNotificationUpdate(
+        title,
+        message,
+        chatId,
+        timestamp,
+        notificationId,
+      );
     } catch (e) {
       developer.log(
         'Error parsing notification: $e',
         name: 'foreground_service',
       );
     }
+  }
+
+  Timer? _updateTimer;
+
+  void _scheduleNotificationUpdate(
+    String title,
+    String body,
+    String chatId,
+    int timestamp,
+    int notificationId,
+  ) {
+    _updateTimer?.cancel();
+    _updateTimer = Timer(const Duration(seconds: 2), () {
+      _showNotification(title, body, chatId, timestamp, notificationId);
+    });
   }
 
   Future<void> _connectToNtfy() async {
@@ -418,6 +456,7 @@ class NotificationTaskHandler extends TaskHandler {
     String body,
     String chatId,
     int timestamp,
+    int notificationId,
   ) async {
     final androidDetails = AndroidNotificationDetails(
       'realtime_channel',
@@ -437,7 +476,7 @@ class NotificationTaskHandler extends TaskHandler {
     );
 
     await _notifications.show(
-      _notificationId++,
+      notificationId,
       title,
       body,
       details,

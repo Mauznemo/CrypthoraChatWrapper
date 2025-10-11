@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:flutter_i18n/flutter_i18n.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
@@ -146,12 +147,14 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     }
   }
 
-  void _injectFlutterInfo(String topic) {
+  Future<void> _injectFlutterInfo(String topic) async {
     final padding = MediaQuery.of(context).padding;
+    final packageInfo = await PackageInfo.fromPlatform();
 
     final polyfillScript =
         '''
             window.isFlutterWebView = true;
+            window.wrapperVersion = "${packageInfo.version}";
             window.ntfyTopic = "$topic";
             window.flutterSafeAreaInsets = {
               top: ${padding.top},

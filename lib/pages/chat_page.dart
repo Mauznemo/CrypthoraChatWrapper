@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'dart:collection';
 import 'dart:developer' as developer;
 
 import 'package:crypthora_chat_wrapper/pages/add_server_page.dart';
@@ -25,6 +27,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   bool isReady = false;
   bool _loadError = false;
   String _errorMessage = '';
+  SharedPreferences? _prefs;
+  PackageInfo? _packageInfo;
 
   InAppWebViewSettings get _webViewSettings => InAppWebViewSettings(
     // Performance optimizations
@@ -59,11 +63,13 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     final NotificationAppLaunchDetails? launchDetails = await _notifications
         .getNotificationAppLaunchDetails();
 
-    var prefs = await SharedPreferences.getInstance();
+    _prefs = await SharedPreferences.getInstance();
 
-    String? serverUrl = prefs.getString('serverUrl');
-    String? notificationServerUrl = prefs.getString('notificationServerUrl');
-    String? topic = prefs.getString('topic');
+    _packageInfo = await PackageInfo.fromPlatform();
+
+    String? serverUrl = _prefs?.getString('serverUrl');
+    String? notificationServerUrl = _prefs?.getString('notificationServerUrl');
+    String? topic = _prefs?.getString('topic');
 
     await I18nHelper.saveCurrentLocale(context);
 
@@ -82,7 +88,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     if (launchDetails?.didNotificationLaunchApp == true) {
       final String? payload = launchDetails!.notificationResponse?.payload;
       if (payload != null && payload.isNotEmpty) {
-        developer.log('App launched from notification with payload: $payload');
+        developer.log(
+          'App launched from notification with payload: $payload',
+          name: 'foreground_service',
+        );
 
         chatId = payload;
       }
@@ -148,14 +157,13 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _injectFlutterInfo(String topic) async {
+  void _injectFlutterInfo(String topic) {
     final padding = MediaQuery.of(context).padding;
-    final packageInfo = await PackageInfo.fromPlatform();
 
-    final polyfillScript =
+    final data =
         '''
             window.isFlutterWebView = true;
-            window.wrapperVersion = "${packageInfo.version}";
+            window.wrapperVersion = "${_packageInfo?.version ?? 'Unknown'}";
             window.ntfyTopic = "$topic";
             window.flutterSafeAreaInsets = {
               top: ${padding.top},
@@ -165,7 +173,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             }
           ''';
 
-    controller?.evaluateJavascript(source: polyfillScript);
+    controller?.evaluateJavascript(source: data);
   }
 
   void _initForegroundTask() {
@@ -270,8 +278,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                           callback: (args) async {
                             String topic = Utils.generateRandomTopic();
 
-                            var prefs = await SharedPreferences.getInstance();
-                            await prefs.setString('topic', topic);
+                            await _prefs?.setString('topic', topic);
 
                             FlutterForegroundTask.sendDataToTask({
                               'topic': topic,
@@ -279,15 +286,25 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                           },
                         );
                       },
+                      initialUserScripts: UnmodifiableListView<UserScript>([
+                        UserScript(
+                          source: """
+                                window.isFlutterWebView = true;
+                          """,
+                          injectionTime:
+                              UserScriptInjectionTime.AT_DOCUMENT_START,
+                        ),
+                      ]),
                       onLoadStop:
-                          (
-                            InAppWebViewController webController,
-                            WebUri? url,
-                          ) async {
-                            var prefs = await SharedPreferences.getInstance();
-                            String? topic = prefs.getString('topic');
+                          (InAppWebViewController webController, WebUri? url) {
+                            String? topic = _prefs?.getString('topic');
                             if (topic != null) {
                               _injectFlutterInfo(topic);
+                            } else {
+                              developer.log(
+                                'Missing topic, not injecting',
+                                name: 'foreground_service',
+                              );
                             }
                           },
                       onReceivedError: (controller, request, error) => {

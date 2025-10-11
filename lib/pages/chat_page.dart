@@ -168,12 +168,12 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     developer.log('Initializing foreground task', name: 'main');
     FlutterForegroundTask.init(
       androidNotificationOptions: AndroidNotificationOptions(
-        channelId: 'foreground_service',
+        channelId: 'foreground_service_min',
         channelName: 'Push Notification Service',
         channelDescription:
             'Keeps the app connected for real-time notifications',
-        channelImportance: NotificationChannelImportance.LOW,
-        priority: NotificationPriority.LOW,
+        channelImportance: NotificationChannelImportance.MIN,
+        priority: NotificationPriority.MIN,
         showBadge: false,
       ),
       iosNotificationOptions: const IOSNotificationOptions(
@@ -181,9 +181,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         playSound: false,
       ),
       foregroundTaskOptions: ForegroundTaskOptions(
-        eventAction: ForegroundTaskEventAction.repeat(
-          15000,
-        ), // Increased to 15 seconds for better battery efficiency
+        eventAction: ForegroundTaskEventAction.repeat(60000 * 5),
         autoRunOnBoot: true,
         allowWakeLock: true,
         allowWifiLock: true,

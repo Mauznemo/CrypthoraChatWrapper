@@ -1,6 +1,9 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:developer' as developer;
 import 'dart:io';
+import 'dart:math';
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:crypthora_chat_wrapper/utils/i18n_helper.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:http/http.dart' as http;
@@ -14,6 +17,8 @@ class NotificationTaskHandler extends TaskHandler {
   String topic = '';
 
   IOWebSocketChannel? _channel;
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
+  final Connectivity _connectivity = Connectivity();
   final FlutterLocalNotificationsPlugin _notifications =
       FlutterLocalNotificationsPlugin();
   DateTime _lastActivity = DateTime.now();
@@ -21,6 +26,9 @@ class NotificationTaskHandler extends TaskHandler {
   SharedPreferences? _prefs;
   DateTime? _lastMessageTimestamp;
   bool _socketOpen = false;
+  bool _hasConnectivity = false;
+  bool _connecting = false;
+  int _reconnectionAttempts = 0;
 
   @override
   Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
@@ -47,36 +55,66 @@ class NotificationTaskHandler extends TaskHandler {
       name: 'foreground_service',
     );
     await _initializeNotifications();
-    _connectToNtfy();
+
+    final results = await _connectivity.checkConnectivity();
+    _hasConnectivity = _isConnectivityActive(results);
+
+    if (_hasConnectivity) {
+      _connectToNtfy();
+    } else {
+      developer.log(
+        'No connectivity, not connecting',
+        name: 'foreground_service',
+      );
+    }
+
+    _connectivitySubscription = _connectivity.onConnectivityChanged.listen(
+      _onConnectivityChanged,
+    );
+  }
+
+  void _onConnectivityChanged(List<ConnectivityResult> results) {
+    final hadConnectivity = _hasConnectivity;
+    _hasConnectivity = _isConnectivityActive(results);
+
+    if (hadConnectivity && !_hasConnectivity) {
+      developer.log('Connection lost (device)', name: 'foreground_service');
+    } else if (!hadConnectivity && _hasConnectivity) {
+      developer.log('Connection restored (device)', name: 'foreground_service');
+      _connectToNtfy();
+    }
   }
 
   @override
   Future<void> onRepeatEvent(DateTime timestamp) async {
-    // Check connection health periodically
-    // final isChannelOpen = _isChannelOpen();
-
-    // Wait 60 to try reconnecting
     if (_socketOpen) {
       developer.log(
-        'WebSocket is open, updating last activity',
+        'onRepeatEvent: WebSocket is open, updating last activity',
         name: 'foreground_service',
       );
       _lastActivity = DateTime.now();
     } else {
-      final disconnectedFor = DateTime.now()
-          .difference(_lastActivity)
-          .inSeconds;
+      // final disconnectedFor = DateTime.now()
+      //     .difference(_lastActivity)
+      //     .inSeconds;
 
-      final retryingInSeconds = (60 + 15) - (disconnectedFor);
+      final results = await _connectivity.checkConnectivity();
+      _hasConnectivity = _isConnectivityActive(results);
+
+      if (!_hasConnectivity) {
+        developer.log(
+          'onRepeatEvent: No connectivity, not reconnecting',
+          name: 'foreground_service',
+        );
+        return;
+      }
+
       developer.log(
-        'Connection lost, reconnecting in $retryingInSeconds seconds',
+        'onRepeatEvent: Connection lost, reconnecting now',
         name: 'foreground_service',
       );
 
-      if (disconnectedFor > 60) {
-        await _getMissedMessages();
-        _connectToNtfy();
-      }
+      _connectToNtfy();
     }
   }
 
@@ -96,10 +134,20 @@ class NotificationTaskHandler extends TaskHandler {
     return lastMessageDate;
   }
 
+  bool _isConnectivityActive(List<ConnectivityResult> results) {
+    return results.any(
+      (result) =>
+          result == ConnectivityResult.wifi ||
+          result == ConnectivityResult.mobile ||
+          result == ConnectivityResult.ethernet,
+    );
+  }
+
   @override
   Future<void> onDestroy(DateTime timestamp, bool _) async {
     developer.log('Notification service destroyed', name: 'foreground_service');
     _channel?.sink.close();
+    _connectivitySubscription?.cancel();
   }
 
   Future<void> _initializeNotifications() async {
@@ -225,6 +273,10 @@ class NotificationTaskHandler extends TaskHandler {
   }
 
   Future<void> _connectToNtfy() async {
+    if (_connecting) return;
+    _connecting = true;
+    await _getMissedMessages();
+
     try {
       developer.log(
         'Tying to connect to WebSocket',
@@ -262,13 +314,7 @@ class NotificationTaskHandler extends TaskHandler {
         },
       );
 
-      _lastActivity = DateTime.now();
-
-      _socketOpen = true;
-
-      _updateServiceNotification(true);
-
-      developer.log('Connected to ntfy WebSocket', name: 'foreground_service');
+      _handleConnect();
     } catch (e) {
       developer.log(
         'Failed to connect to ntfy: $e',
@@ -278,27 +324,68 @@ class NotificationTaskHandler extends TaskHandler {
     }
   }
 
+  void _handleConnect() {
+    _connecting = false;
+    _lastActivity = DateTime.now();
+    _socketOpen = true;
+    _reconnectionAttempts = 0;
+
+    _updateServiceNotification(true, 'Connected to ntfy server');
+
+    developer.log('Connected to ntfy WebSocket', name: 'foreground_service');
+  }
+
   void _handleDisconnect() {
+    _connecting = false;
     _socketOpen = false;
     _channel = null;
     _lastActivity = DateTime.now();
-    _updateServiceNotification(false);
+
     if (_getLastMessageTimestamp() == null) {
       _setLastMessageTimestamp(DateTime.now());
     }
+
+    if (!_hasConnectivity) {
+      _updateServiceNotification(
+        false,
+        'Device offline, not attempting reconnection',
+      );
+      return;
+    }
+
+    if (_reconnectionAttempts >= 5) {
+      _updateServiceNotification(
+        false,
+        'Max reconnection attempts reached, retrying later',
+      );
+      return;
+    }
+
+    final baseDelay = 2;
+    final maxDelay = 60;
+    final delay = min(maxDelay, baseDelay * (1 << _reconnectionAttempts));
+
+    final jitter = Random().nextInt(3);
+    final delayWithJitter = delay + jitter;
+
+    developer.log(
+      'Reconnection attempt $_reconnectionAttempts',
+      name: 'foreground_service',
+    );
+
+    _updateServiceNotification(false, 'Retying in $delay seconds');
+
+    _reconnectionAttempts += 1;
+    Timer(Duration(seconds: delayWithJitter), _connectToNtfy);
   }
 
-  void _updateServiceNotification(bool connected) {
+  void _updateServiceNotification(bool connected, String notificationText) {
     final notificationTitle = I18nHelper.t(
       connected
           ? 'notifications.service.connected'
           : 'notifications.service.disconnected',
     );
-    final notificationText = I18nHelper.t(
-      connected
-          ? 'notifications.service.receiving'
-          : 'notifications.service.trying-to-reconnect',
-    );
+
     FlutterForegroundTask.updateService(
       notificationTitle: notificationTitle,
       notificationText: notificationText,

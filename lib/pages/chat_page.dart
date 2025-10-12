@@ -14,6 +14,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class ChatPage extends StatefulWidget {
   final String? chatId;
@@ -207,6 +208,11 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     );
   }
 
+  bool _isAppUrl(String url) {
+    String? serverUrl = _prefs?.getString('serverUrl') ?? 'http';
+    return url.startsWith(serverUrl);
+  }
+
   Future<void> _startForegroundTask() async {
     developer.log('Starting foreground task', name: 'main');
     final status = await Permission.notification.status;
@@ -301,6 +307,19 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                               UserScriptInjectionTime.AT_DOCUMENT_START,
                         ),
                       ]),
+                      onUpdateVisitedHistory:
+                          (controller, url, isReload) async {
+                            if (url != null && !_isAppUrl(url.toString())) {
+                              controller.goBack();
+                              debugPrint(
+                                '[foreground_service] Launching URL: $url',
+                              );
+                              await launchUrl(
+                                url,
+                                mode: LaunchMode.externalApplication,
+                              );
+                            }
+                          },
                       onLoadStop:
                           (InAppWebViewController webController, WebUri? url) {
                             String? topic = _prefs?.getString('topic');

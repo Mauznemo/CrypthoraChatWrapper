@@ -17,7 +17,7 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 class ChatPage extends StatefulWidget {
   final String? chatId;
-  const ChatPage({Key? key, this.chatId}) : super(key: key);
+  const ChatPage({super.key, this.chatId});
   @override
   _ChatPageState createState() => _ChatPageState();
 }
@@ -197,7 +197,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         playSound: false,
       ),
       foregroundTaskOptions: ForegroundTaskOptions(
-        eventAction: ForegroundTaskEventAction.repeat(60000 * 5),
+        eventAction: ForegroundTaskEventAction.repeat(
+          const Duration(hours: 2).inMilliseconds,
+        ),
         autoRunOnBoot: true,
         allowWakeLock: true,
         allowWifiLock: true,

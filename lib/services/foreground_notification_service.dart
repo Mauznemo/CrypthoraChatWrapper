@@ -1,10 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:developer' as developer;
+// import 'dart:developer' as developer;
 import 'dart:io';
 import 'dart:math';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:crypthora_chat_wrapper/utils/i18n_helper.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -21,8 +22,6 @@ class NotificationTaskHandler extends TaskHandler {
   final Connectivity _connectivity = Connectivity();
   final FlutterLocalNotificationsPlugin _notifications =
       FlutterLocalNotificationsPlugin();
-  DateTime _lastActivity = DateTime.now();
-  int _notificationId = 0;
   SharedPreferences? _prefs;
   DateTime? _lastMessageTimestamp;
   bool _socketOpen = false;
@@ -33,7 +32,7 @@ class NotificationTaskHandler extends TaskHandler {
 
   @override
   Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
-    developer.log('Notification service started', name: 'foreground_service');
+    debugPrint('[foreground_service] Notification service started');
     _prefs = await SharedPreferences.getInstance();
     I18nHelper.load(_prefs?.getString('locale') ?? 'en');
     notificationServerUrl = _prefs?.getString('notificationServerUrl') ?? '';
@@ -45,16 +44,12 @@ class NotificationTaskHandler extends TaskHandler {
     }
     topic = _prefs?.getString('topic') ?? '';
     if (notificationServerUrl.isEmpty || topic.isEmpty) {
-      developer.log(
-        'Missing server URL or topic, stopping service',
-        name: 'foreground_service',
+      debugPrint(
+        '[foreground_service] Missing server URL or topic, stopping service',
       );
       return;
     }
-    developer.log(
-      'WS URL: $notificationServerUrl/$topic/ws',
-      name: 'foreground_service',
-    );
+    debugPrint('[foreground_service] WS URL: $notificationServerUrl/$topic/ws');
     await _initializeNotifications();
 
     final results = await _connectivity.checkConnectivity();
@@ -63,10 +58,7 @@ class NotificationTaskHandler extends TaskHandler {
     if (_hasConnectivity) {
       _connectToNtfy();
     } else {
-      developer.log(
-        'No connectivity, not connecting',
-        name: 'foreground_service',
-      );
+      debugPrint('[foreground_service] No connectivity, not connecting');
     }
 
     _connectivitySubscription = _connectivity.onConnectivityChanged.listen(
@@ -79,9 +71,9 @@ class NotificationTaskHandler extends TaskHandler {
     _hasConnectivity = _isConnectivityActive(results);
 
     if (hadConnectivity && !_hasConnectivity) {
-      developer.log('Connection lost (device)', name: 'foreground_service');
+      debugPrint('[foreground_service] Connection lost (device)');
     } else if (!hadConnectivity && _hasConnectivity) {
-      developer.log('Connection restored (device)', name: 'foreground_service');
+      debugPrint('[foreground_service] Connection restored (device)');
       _connectToNtfy();
     }
   }
@@ -103,30 +95,22 @@ class NotificationTaskHandler extends TaskHandler {
   @override
   Future<void> onRepeatEvent(DateTime timestamp) async {
     if (_socketOpen) {
-      developer.log(
-        'onRepeatEvent: WebSocket is open, updating last activity',
-        name: 'foreground_service',
+      debugPrint(
+        '[foreground_service] onRepeatEvent: WebSocket is open, updating last activity',
       );
-      _lastActivity = DateTime.now();
     } else {
-      // final disconnectedFor = DateTime.now()
-      //     .difference(_lastActivity)
-      //     .inSeconds;
-
       final results = await _connectivity.checkConnectivity();
       _hasConnectivity = _isConnectivityActive(results);
 
       if (!_hasConnectivity) {
-        developer.log(
-          'onRepeatEvent: No connectivity, not reconnecting',
-          name: 'foreground_service',
+        debugPrint(
+          '[foreground_service] onRepeatEvent: No connectivity, not reconnecting',
         );
         return;
       }
 
-      developer.log(
-        'onRepeatEvent: Connection lost, reconnecting now',
-        name: 'foreground_service',
+      debugPrint(
+        '[foreground_service] onRepeatEvent: Connection lost, reconnecting now',
       );
 
       _connectToNtfy();
@@ -160,7 +144,7 @@ class NotificationTaskHandler extends TaskHandler {
 
   @override
   Future<void> onDestroy(DateTime timestamp, bool _) async {
-    developer.log('Notification service destroyed', name: 'foreground_service');
+    debugPrint('[foreground_service] Notification service destroyed');
     _channel?.sink.close();
     _connectivitySubscription?.cancel();
   }
@@ -172,7 +156,7 @@ class NotificationTaskHandler extends TaskHandler {
       android: androidSettings,
       iOS: iosSettings,
     );
-    developer.log('Initializing notifications', name: 'foreground_service');
+    debugPrint('[foreground_service] Initializing notifications');
     await _notifications.initialize(
       settings,
       onDidReceiveNotificationResponse: onDidReceiveNotificationResponse,
@@ -198,9 +182,8 @@ class NotificationTaskHandler extends TaskHandler {
 
       final since = (lastTimestamp / 1000).floor().toString();
 
-      developer.log(
-        'Fetching missed messages, query: ${_wsToHttp(notificationServerUrl)}/$topic/json?since=$since&poll=1',
-        name: 'foreground_service',
+      debugPrint(
+        '[foreground_service] Fetching missed messages, query: ${_wsToHttp(notificationServerUrl)}/$topic/json?since=$since&poll=1',
       );
 
       final response = await http
@@ -213,17 +196,16 @@ class NotificationTaskHandler extends TaskHandler {
           .timeout(Duration(seconds: 10));
 
       if (response.statusCode == 200) {
-        developer.log('Received missed messages', name: 'foreground_service');
+        debugPrint('[foreground_service] Received missed messages');
         final body = response.body.trim();
-        developer.log('Trimmed missed messages', name: 'foreground_service');
+        debugPrint('[foreground_service] Trimmed missed messages');
         if (body.isEmpty) return;
 
         final lines = body.split('\n').where((line) => line.isNotEmpty);
-        developer.log('Split missed messages', name: 'foreground_service');
+        debugPrint('[foreground_service] Split missed messages');
 
-        developer.log(
-          'Received ${lines.length} missed messages',
-          name: 'foreground_service',
+        debugPrint(
+          '[foreground_service] Received ${lines.length} missed messages',
         );
 
         for (var line in lines) {
@@ -233,9 +215,8 @@ class NotificationTaskHandler extends TaskHandler {
           final latestMessageTime = (lastTimestamp / 1000).floor();
 
           if (time <= latestMessageTime) {
-            developer.log(
-              'Skipping old message $time <= $latestMessageTime = ${time <= latestMessageTime}',
-              name: 'foreground_service',
+            debugPrint(
+              '[foreground_service] Skipping old message $time <= $latestMessageTime = ${time <= latestMessageTime}',
             );
             continue;
           }
@@ -244,10 +225,7 @@ class NotificationTaskHandler extends TaskHandler {
         }
       }
     } catch (e) {
-      developer.log(
-        'Error fetching missed messages: $e',
-        name: 'foreground_service',
-      );
+      debugPrint('[foreground_service] Error fetching missed messages: $e');
     }
   }
 
@@ -255,10 +233,7 @@ class NotificationTaskHandler extends TaskHandler {
     try {
       // Skip empty messages
       if (data.toString().trim().isEmpty) {
-        developer.log(
-          'Empty message received, skipping',
-          name: 'foreground_service',
-        );
+        debugPrint('[foreground_service] Empty message received, skipping');
         return;
       }
 
@@ -309,10 +284,8 @@ class NotificationTaskHandler extends TaskHandler {
         notificationId,
       );
     } catch (e) {
-      developer.log(
-        'Error parsing notification: $e',
-        name: 'foreground_service',
-      );
+      debugPrint('[foreground_service] Error parsing notification: $e');
+      debugPrint('Error parsing notification: $e');
     }
   }
 
@@ -337,13 +310,11 @@ class NotificationTaskHandler extends TaskHandler {
     await _getMissedMessages();
 
     try {
-      developer.log(
-        'Tying to connect to WebSocket',
-        name: 'foreground_service',
-      );
+      debugPrint('[foreground_service] Tying to connect to WebSocket');
       _channel?.sink.close();
       _channel = IOWebSocketChannel.connect(
         Uri.parse('$notificationServerUrl/$topic/ws'),
+        pingInterval: const Duration(seconds: 30),
       );
 
       // await _channel?.ready;
@@ -357,48 +328,42 @@ class NotificationTaskHandler extends TaskHandler {
 
       _channel!.stream.listen(
         (data) async {
-          developer.log('Received data: $data', name: 'foreground_service');
+          debugPrint('[foreground_service] Received data: $data');
           _handleMessage(data);
         },
         onError: (error) {
-          developer.log('WebSocket error: $error', name: 'foreground_service');
+          debugPrint('[foreground_service] WebSocket error: $error');
           _handleDisconnect();
         },
         onDone: () {
-          developer.log(
-            'WebSocket connection closed',
-            name: 'foreground_service',
-          );
+          debugPrint('[foreground_service] WebSocket connection closed');
           _handleDisconnect();
         },
       );
 
       _handleConnect();
     } catch (e) {
-      developer.log(
-        'Failed to connect to ntfy: $e',
-        name: 'foreground_service',
-      );
+      debugPrint('[foreground_service] Failed to connect to ntfy: $e');
+      debugPrint('[foreground_service] Failed to connect to ntfy: $e');
       _handleDisconnect();
     }
   }
 
   void _handleConnect() {
     _connecting = false;
-    _lastActivity = DateTime.now();
     _socketOpen = true;
     _reconnectionAttempts = 0;
 
     _updateServiceNotification(true, 'Connected to ntfy server');
 
-    developer.log('Connected to ntfy WebSocket', name: 'foreground_service');
+    debugPrint('[foreground_service] Connected to ntfy WebSocket');
   }
 
   void _handleDisconnect() {
     _connecting = false;
     _socketOpen = false;
     _channel = null;
-    _lastActivity = DateTime.now();
+    debugPrint('[foreground_service] Disconnected from ntfy WebSocket');
 
     if (_getLastMessageTimestamp() == null) {
       _setLastMessageTimestamp(DateTime.now());
@@ -427,9 +392,8 @@ class NotificationTaskHandler extends TaskHandler {
     final jitter = Random().nextInt(3);
     final delayWithJitter = delay + jitter;
 
-    developer.log(
-      'Reconnection attempt $_reconnectionAttempts',
-      name: 'foreground_service',
+    debugPrint(
+      '[foreground_service] Reconnection attempt $_reconnectionAttempts',
     );
 
     _updateServiceNotification(false, 'Retying in $delay seconds');
@@ -487,13 +451,12 @@ class NotificationTaskHandler extends TaskHandler {
 
 @pragma('vm:entry-point')
 void onDidReceiveNotificationResponse(NotificationResponse response) async {
-  developer.log('Notification response: $response', name: 'foreground_service');
+  debugPrint('[foreground_service] Notification response: $response');
 }
 
 @pragma('vm:entry-point')
 void notificationTapBackground(NotificationResponse response) async {
-  developer.log(
-    'Notification Background response: $response',
-    name: 'foreground_service',
+  debugPrint(
+    '[foreground_service] Notification Background response: $response',
   );
 }

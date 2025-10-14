@@ -17,14 +17,14 @@ class NotificationTaskHandler extends TaskHandler {
   String notificationServerUrl = '';
   String topic = '';
 
-  IOWebSocketChannel? _channel;
+  http.Client? _client;
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
   final Connectivity _connectivity = Connectivity();
   final FlutterLocalNotificationsPlugin _notifications =
       FlutterLocalNotificationsPlugin();
   SharedPreferences? _prefs;
   DateTime? _lastMessageTimestamp;
-  bool _socketOpen = false;
+  bool _connected = false;
   bool _hasConnectivity = false;
   bool _connecting = false;
   int _reconnectionAttempts = 0;
@@ -67,6 +67,7 @@ class NotificationTaskHandler extends TaskHandler {
   }
 
   void _onConnectivityChanged(List<ConnectivityResult> results) {
+    debugPrint('[foreground_service] Connectivity changed: $results');
     final hadConnectivity = _hasConnectivity;
     _hasConnectivity = _isConnectivityActive(results);
 
@@ -94,7 +95,7 @@ class NotificationTaskHandler extends TaskHandler {
 
   @override
   Future<void> onRepeatEvent(DateTime timestamp) async {
-    if (_socketOpen) {
+    if (_connected) {
       debugPrint(
         '[foreground_service] onRepeatEvent: WebSocket is open, updating last activity',
       );
@@ -145,7 +146,7 @@ class NotificationTaskHandler extends TaskHandler {
   @override
   Future<void> onDestroy(DateTime timestamp, bool _) async {
     debugPrint('[foreground_service] Notification service destroyed');
-    _channel?.sink.close();
+    _client?.close();
     _connectivitySubscription?.cancel();
   }
 
@@ -310,40 +311,59 @@ class NotificationTaskHandler extends TaskHandler {
     await _getMissedMessages();
 
     try {
-      debugPrint('[foreground_service] Tying to connect to WebSocket');
-      _channel?.sink.close();
-      _channel = IOWebSocketChannel.connect(
-        Uri.parse('$notificationServerUrl/$topic/ws'),
-        pingInterval: const Duration(seconds: 30),
+      debugPrint('[foreground_service] Trying to connect to ntfy stream');
+
+      _client?.close();
+      _client = http.Client();
+
+      final request = http.Request(
+        'GET',
+        Uri.parse('${_wsToHttp(notificationServerUrl)}/$topic/json'),
       );
 
-      // await _channel?.ready;
-      try {
-        await _channel?.ready;
-      } on SocketException catch (e) {
-        throw Exception('Socket not ready: $e');
-      } on WebSocketChannelException catch (e) {
-        throw Exception('Socket not ready: $e');
+      final response = await _client!.send(request);
+
+      if (response.statusCode != 200) {
+        throw Exception('Failed to connect: ${response.statusCode}');
       }
 
-      _channel!.stream.listen(
-        (data) async {
-          debugPrint('[foreground_service] Received data: $data');
-          _handleMessage(data);
-        },
-        onError: (error) {
-          debugPrint('[foreground_service] WebSocket error: $error');
-          _handleDisconnect();
-        },
-        onDone: () {
-          debugPrint('[foreground_service] WebSocket connection closed');
-          _handleDisconnect();
-        },
-      );
-
+      debugPrint('[foreground_service] Connected to ntfy stream');
       _handleConnect();
+
+      response.stream
+          .timeout(
+            const Duration(seconds: 90),
+            onTimeout: (sink) {
+              debugPrint(
+                '[foreground_service] Stream timeout, reconnecting...',
+              );
+              _client?.close();
+              _connected = false;
+              //_handleDisconnect(); already called from onError
+            },
+          )
+          .transform(utf8.decoder)
+          .transform(const LineSplitter())
+          .listen(
+            (line) {
+              if (line.trim().isNotEmpty) {
+                debugPrint('[foreground_service] Received data: $line');
+                _handleMessage(line);
+              }
+            },
+            onError: (error) {
+              debugPrint('[foreground_service] Stream error: $error');
+              _handleDisconnect();
+            },
+            onDone: () {
+              debugPrint('[foreground_service] Stream connection closed');
+              _handleDisconnect();
+            },
+            cancelOnError: false,
+          );
+
+      _connecting = false;
     } catch (e) {
-      debugPrint('[foreground_service] Failed to connect to ntfy: $e');
       debugPrint('[foreground_service] Failed to connect to ntfy: $e');
       _handleDisconnect();
     }
@@ -351,19 +371,19 @@ class NotificationTaskHandler extends TaskHandler {
 
   void _handleConnect() {
     _connecting = false;
-    _socketOpen = true;
+    _connected = true;
     _reconnectionAttempts = 0;
 
     _updateServiceNotification(true, 'Connected to ntfy server');
 
-    debugPrint('[foreground_service] Connected to ntfy WebSocket');
+    debugPrint('[foreground_service] Connected to ntfy stream');
   }
 
   void _handleDisconnect() {
     _connecting = false;
-    _socketOpen = false;
-    _channel = null;
-    debugPrint('[foreground_service] Disconnected from ntfy WebSocket');
+    _connected = false;
+    _client = null;
+    debugPrint('[foreground_service] Disconnected from ntfy stream');
 
     if (_getLastMessageTimestamp() == null) {
       _setLastMessageTimestamp(DateTime.now());
@@ -399,7 +419,10 @@ class NotificationTaskHandler extends TaskHandler {
     _updateServiceNotification(false, 'Retying in $delay seconds');
 
     _reconnectionAttempts += 1;
-    Timer(Duration(seconds: delayWithJitter), _connectToNtfy);
+    Timer(Duration(seconds: delayWithJitter), () {
+      if (_connected && _client != null) return;
+      _connectToNtfy();
+    });
   }
 
   void _updateServiceNotification(bool connected, String notificationText) {

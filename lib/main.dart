@@ -1,10 +1,22 @@
 import 'package:crypthora_chat_wrapper/pages/chat_page.dart';
+import 'package:crypthora_chat_wrapper/services/push_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_i18n/flutter_i18n.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:unifiedpush/unifiedpush.dart';
+import 'package:workmanager/workmanager.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  await Workmanager().initialize(callbackDispatcher);
+
+  await UnifiedPush.initialize(
+    onNewEndpoint: PushService.onNewEndpoint,
+    onRegistrationFailed: PushService.onRegistrationFailed,
+    onUnregistered: PushService.onUnregistered,
+    onMessage: PushService.onMessage,
+  );
 
   runApp(
     MaterialApp(
@@ -53,4 +65,14 @@ void main() {
       },
     ),
   );
+}
+
+@pragma('vm:entry-point')
+void callbackDispatcher() {
+  Workmanager().executeTask((task, inputData) async {
+    if (task == 'showNotification') {
+      await PushService.showPendingNotification(inputData!);
+    }
+    return Future.value(true);
+  });
 }

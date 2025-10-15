@@ -80,9 +80,12 @@ class _AddServerPageState extends State<AddServerPage> {
                   String topic = Utils.generateRandomTopic();
 
                   var prefs = await SharedPreferences.getInstance();
-                  await prefs.setString('serverUrl', _serverUrlController.text);
                   await prefs.setString(
-                    'notificationServerUrl',
+                    'server_url',
+                    _serverUrlController.text,
+                  );
+                  await prefs.setString(
+                    'notification_server_url',
                     _notificationServerUrlController.text,
                   );
                   await prefs.setString('topic', topic);

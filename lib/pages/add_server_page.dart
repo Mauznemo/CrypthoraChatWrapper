@@ -1,11 +1,11 @@
-import 'dart:math';
-
+import 'package:crypthora_chat_wrapper/components/custom_dropdown_button.dart';
+import 'package:crypthora_chat_wrapper/components/custom_text_form_field.dart';
 import 'package:crypthora_chat_wrapper/pages/chat_page.dart';
-import 'package:crypthora_chat_wrapper/utils/utils.dart';
+import 'package:crypthora_chat_wrapper/services/push_service.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:flutter_i18n/flutter_i18n.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:unifiedpush/unifiedpush.dart';
 
 class AddServerPage extends StatefulWidget {
   final bool canGoBack;
@@ -17,13 +17,28 @@ class AddServerPage extends StatefulWidget {
 
 class _AddServerPageState extends State<AddServerPage> {
   final TextEditingController _serverUrlController = TextEditingController();
-  final TextEditingController _notificationServerUrlController =
-      TextEditingController();
+  String _pushProvider = 'none';
+  List<String> distributors = ['none'];
+
+  Future<void> _init() async {
+    final prefs = await SharedPreferences.getInstance();
+    _serverUrlController.text = prefs.getString('server_url') ?? '';
+    distributors = await UnifiedPush.getDistributors();
+    debugPrint('distributors: $distributors');
+    if (distributors.isEmpty) return;
+    _pushProvider = distributors[0];
+    setState(() {});
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _init();
+  }
 
   @override
   void dispose() {
     _serverUrlController.dispose();
-    _notificationServerUrlController.dispose();
     super.dispose();
   }
 
@@ -51,45 +66,61 @@ class _AddServerPageState extends State<AddServerPage> {
           padding: const EdgeInsets.all(16.0),
           child: Column(
             children: [
-              TextField(
-                controller: _serverUrlController,
-                decoration: InputDecoration(
-                  labelText: FlutterI18n.translate(
-                    context,
-                    'server-settings.server-url',
-                  ),
-                  hintText: 'https://chat.my-server.com',
+              Align(
+                alignment: Alignment.topLeft,
+                child: Text(
+                  FlutterI18n.translate(context, 'server-settings.server-url'),
                 ),
               ),
-              TextField(
-                controller: _notificationServerUrlController,
-
-                decoration: InputDecoration(
-                  labelText: FlutterI18n.translate(
+              CustomTextFormField(controller: _serverUrlController),
+              const SizedBox(height: 16),
+              Align(
+                alignment: Alignment.topLeft,
+                child: Text(
+                  FlutterI18n.translate(
                     context,
-                    'server-settings.notification-server-url',
+                    'server-settings.push-provider',
                   ),
-                  hintText: 'wss://ntfy.my-server.com',
                 ),
               ),
+              CustomDropdownButton(
+                value: _pushProvider,
+                items: distributors
+                    .map(
+                      (e) => DropdownMenuItem<String>(value: e, child: Text(e)),
+                    )
+                    .toList(),
+                onChanged: (value) {
+                  setState(() {
+                    _pushProvider = value as String;
+                  });
+                },
+              ),
+              const SizedBox(height: 16),
               FilledButton(
                 onPressed: () async {
                   if (_serverUrlController.text.isEmpty) return;
-                  if (_notificationServerUrlController.text.isEmpty) return;
-
-                  String topic = Utils.generateRandomTopic();
+                  if (_pushProvider.isEmpty) return;
 
                   var prefs = await SharedPreferences.getInstance();
                   await prefs.setString(
                     'server_url',
                     _serverUrlController.text,
                   );
-                  await prefs.setString(
-                    'notification_server_url',
-                    _notificationServerUrlController.text,
-                  );
-                  await prefs.setString('topic', topic);
-                  FlutterForegroundTask.restartService();
+                  // await prefs.setString(
+                  //   'notification_server_url',
+                  //   _notificationServerUrlController.text,
+                  // );
+                  await PushService.unregister();
+
+                  final oldDistributor = await UnifiedPush.getDistributor();
+                  if (oldDistributor != _pushProvider) {
+                    debugPrint('save distributor: $_pushProvider');
+                    await UnifiedPush.saveDistributor(_pushProvider);
+                  }
+
+                  await PushService.register();
+
                   if (mounted) {
                     Navigator.push(
                       context,

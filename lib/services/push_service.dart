@@ -1,25 +1,35 @@
 import 'dart:convert';
 
 import 'package:crypthora_chat_wrapper/utils/i18n_helper.dart';
+import 'package:crypthora_chat_wrapper/utils/utils.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:unifiedpush/unifiedpush.dart';
-import 'package:workmanager/workmanager.dart';
 
+@pragma('vm:entry-point')
 class PushService {
   static final FlutterLocalNotificationsPlugin _notifications =
       FlutterLocalNotificationsPlugin();
+  static final _instance = 'crypthora_chat';
+
+  static Future<void> register() async {
+    await UnifiedPush.register(instance: _instance);
+  }
+
+  static Future<void> unregister() async {
+    await UnifiedPush.unregister(_instance);
+  }
 
   static void onNewEndpoint(PushEndpoint endpoint, String instance) {
-    debugPrint("New endpoint: $endpoint");
+    debugPrint("[push_service] New endpoint: ${endpoint.url}");
 
     // TODO: Send endpoint to server
     saveEndpoint(endpoint);
   }
 
   static void onRegistrationFailed(FailedReason reason, String instance) {
-    debugPrint("Registration failed");
+    debugPrint("[push_service] Registration failed");
   }
 
   static void onUnregistered(String instance) {
@@ -27,52 +37,70 @@ class PushService {
     // Clean up endpoint server
   }
 
+  @pragma('vm:entry-point')
   static Future<void> onMessage(PushMessage message, String instance) async {
     String messageText = utf8.decode(message.content);
-    debugPrint("Received message: $messageText");
-    final data = jsonDecode(messageText);
+    debugPrint("[push_service] Received message: $messageText");
+    try {
+      final data = jsonDecode(messageText);
 
-    final chatId = data['chatId'] as String;
-    final chatName = data['chatName'] as String;
-    final username = data['username'] as String;
-    final groupType = data['groupType'] as String;
-    final timestamp = data['timestamp'] as int;
+      final chatId = data['chatId'] as String;
+      final chatName = data['chatName'] as String;
+      final username = data['username'] as String;
+      final groupType = data['groupType'] as String;
+      final timestamp = data['timestamp'] as int;
 
-    await _incrementUnreadCount(chatId);
+      await _incrementUnreadCount(chatId);
 
-    await _storePendingNotification(
-      chatId,
-      chatName,
-      username,
-      groupType,
-      timestamp,
-    );
+      await _storePendingNotification(
+        chatId,
+        chatName,
+        username,
+        groupType,
+        timestamp,
+      );
 
-    await _scheduleNotificationUpdate(chatId);
+      debugPrint("[push_service] Stored pending notification for $chatId");
+      await _scheduleNotificationUpdate(chatId);
+    } catch (e) {
+      debugPrint("[push_service] Error parsing message: $e");
+    }
   }
 
   static Future<void> saveEndpoint(PushEndpoint endpoint) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('unifiedpush_endpoint', endpoint.url);
+    // await prefs.setString('unifiedpush_endpoint', endpoint.url);
+    final topic = Utils.extractNtfyTopic(endpoint.url);
+    await prefs.setString('topic', topic);
   }
 
   static Future<void> _scheduleNotificationUpdate(String chatId) async {
-    // Cancel existing scheduled notification for this chat
-    await Workmanager().cancelByUniqueName('notification_$chatId');
+    final scheduledTime = DateTime.now().millisecondsSinceEpoch;
+    await _setNewestNotificationTimestamp(chatId, scheduledTime);
 
-    // Schedule new notification in 2 seconds
-    await Workmanager().registerOneOffTask(
-      'notification_$chatId',
-      'showNotification',
-      initialDelay: Duration(seconds: 2),
-      inputData: {'chatId': chatId},
-    );
+    Future.delayed(Duration(seconds: 2), () async {
+      final newestTimestamp = await _getNewestNotificationTimestamp(chatId);
+
+      // If a newer notification was scheduled after this one, don't show
+      if (newestTimestamp != null && newestTimestamp > scheduledTime) {
+        return;
+      }
+
+      await _showPendingNotification(chatId);
+    });
   }
 
-  static Future<void> showPendingNotification(
-    Map<String, dynamic> inputData,
-  ) async {
-    final chatId = inputData['chatId'] as String;
+  static final Map<String, dynamic> _translationsEn = {
+    "new-message-group": "{count} new messages in {chatName}",
+    "new-message-dm": "{count} new messages from {username}",
+  };
+
+  static final Map<String, dynamic> _translationsDe = {
+    "new-message-dm": "{count} neue Nachrichten von {username}",
+    "new-message-group": "{count} neue Nachrichten in {chatName}",
+  };
+
+  static Future<void> _showPendingNotification(String chatId) async {
     final pending = await _getPendingNotification(chatId);
 
     if (pending == null) return;
@@ -86,15 +114,22 @@ class PushService {
     String title;
     String body;
 
+    final prefs = await SharedPreferences.getInstance();
+    final locale = prefs.getString('locale');
+    I18nHelper.load(
+      locale ?? 'en',
+      locale == 'de' ? _translationsDe : _translationsEn,
+    );
+
     if (groupType == 'group') {
       title = chatName;
-      body = I18nHelper.t('notifications.new-message-group', {
+      body = I18nHelper.t('new-message-group', {
         'count': unreadCount.toString(),
         'chatName': chatName,
       });
     } else {
       title = username;
-      body = I18nHelper.t('notifications.new-message-dm', {
+      body = I18nHelper.t('new-message-dm', {
         'count': unreadCount.toString(),
         'username': username,
       });
@@ -196,13 +231,24 @@ class PushService {
     return counts[chatId] ?? 0;
   }
 
+  static Future<void> _setNewestNotificationTimestamp(
+    String chatId,
+    int timestamp,
+  ) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('newest_notification_timestamp_$chatId', timestamp);
+  }
+
+  static Future<int?> _getNewestNotificationTimestamp(String chatId) async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt('newest_notification_timestamp_$chatId');
+  }
+
   static Future<void> clearUnreadCount(String chatId) async {
     final counts = await _getUnreadCounts();
     counts.remove(chatId);
     await _saveUnreadCounts(counts);
 
-    // Also cancel any pending notifications for this chat
-    await Workmanager().cancelByUniqueName('notification_$chatId');
     await _clearPendingNotification(chatId);
   }
 }

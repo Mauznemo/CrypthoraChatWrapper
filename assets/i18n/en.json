@@ -20,7 +20,8 @@
   "server-settings": {
     "set-server": "Set Server",
     "server-url": "Server URL",
-    "notification-server-url": "Notification Server URL"
+    "notification-server-url": "Notification Server URL",
+    "push-provider": "Push Provider"
   },
   "common": {
     "save": "Save"

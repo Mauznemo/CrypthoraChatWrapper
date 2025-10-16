@@ -31,6 +31,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   String _errorMessage = '';
   SharedPreferences? _prefs;
   PackageInfo? _packageInfo;
+  String? _topic;
 
   InAppWebViewSettings get _webViewSettings => InAppWebViewSettings(
     // Performance optimizations
@@ -72,14 +73,23 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     //TODO: clear unread counts
 
     String? serverUrl = _prefs?.getString('server_url');
-    String? notificationServerUrl = _prefs?.getString(
-      'notification_server_url',
-    );
-    String? endpointUrl = _prefs?.getString('unifiedpush_endpoint');
+
+    _topic = _prefs?.getString('topic');
+
+    if (_topic == null || _topic!.isEmpty) {
+      await Future.delayed(const Duration(seconds: 5));
+      _prefs?.reload();
+      _topic = _prefs?.getString('topic');
+    }
+
+    debugPrint('[chat_page] topic: $_topic');
 
     await I18nHelper.saveCurrentLocale(context);
 
-    if (serverUrl == null || notificationServerUrl == null) {
+    if (serverUrl == null ||
+        serverUrl.isEmpty ||
+        _topic == null ||
+        _topic!.isEmpty) {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
@@ -88,6 +98,12 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       );
       return;
     }
+
+    if (await Permission.notification.isDenied) {
+      await Permission.notification.request();
+    }
+
+    // await PushService.register();
 
     String? chatId;
 
@@ -225,8 +241,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                       },
                       initialUserScripts: UnmodifiableListView<UserScript>([
                         UserScript(
-                          source: """
+                          source:
+                              """
                                 window.isFlutterWebView = true;
+                                window.topic = "${_topic ?? ''}";
                           """,
                           injectionTime:
                               UserScriptInjectionTime.AT_DOCUMENT_START,

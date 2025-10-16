@@ -7,7 +7,7 @@ plugins {
 
 android {
     namespace = "dev.mauznemo.crypthora_chat_wrapper"
-    compileSdk = flutter.compileSdkVersion
+    compileSdk = 36
     ndkVersion = "27.0.12077973"
 
     compileOptions {
@@ -16,12 +16,11 @@ android {
         isCoreLibraryDesugaringEnabled = true
     }
 
-    kotlinOptions {
-        jvmTarget = JavaVersion.VERSION_11.toString()
-    }
+    kotlinOptions { jvmTarget = JavaVersion.VERSION_11.toString() }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
+        // TODO: Specify your own unique Application ID
+        // (https://developer.android.com/studio/build/application-id.html).
         applicationId = "dev.mauznemo.crypthora_chat_wrapper"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
@@ -39,11 +38,7 @@ android {
         }
     }
 
-    dependencies {
-        coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
-    }
+    dependencies { coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4") }
 }
 
-flutter {
-    source = "../.."
-}
+flutter { source = "../.." }

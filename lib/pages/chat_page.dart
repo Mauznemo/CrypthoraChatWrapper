@@ -176,7 +176,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     }
   }
 
-  void _injectFlutterInfo(String topic) {
+  Future<void> _injectFlutterInfo(String topic) async {
     final padding = MediaQuery.of(context).padding;
 
     final data =
@@ -192,7 +192,14 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             }
           ''';
 
-    controller?.evaluateJavascript(source: data);
+    await controller?.evaluateJavascript(source: data);
+    await controller?.evaluateJavascript(
+      source: """
+      if (window.onFlutterSafeAreaInsetsChanged) {
+        window.onFlutterSafeAreaInsetsChanged();
+      }
+    """,
+    );
   }
 
   bool _isAppUrl(String url) {

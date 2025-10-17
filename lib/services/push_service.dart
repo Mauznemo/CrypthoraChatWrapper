@@ -211,11 +211,13 @@ class PushService {
   static Future<Map<String, int>> _getUnreadCounts() async {
     final prefs = await SharedPreferences.getInstance();
     final json = prefs.getString('unread_counts') ?? '{}';
+    debugPrint("[push_service] Loading unread counts: $json");
     final Map<String, dynamic> decoded = jsonDecode(json);
     return decoded.map((key, value) => MapEntry(key, value as int));
   }
 
   static Future<void> _saveUnreadCounts(Map<String, int> counts) async {
+    debugPrint("[push_service] Saving unread counts: $counts");
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('unread_counts', jsonEncode(counts));
   }
@@ -250,5 +252,14 @@ class PushService {
     await _saveUnreadCounts(counts);
 
     await _clearPendingNotification(chatId);
+  }
+
+  static Future<void> clearUnreadCounts() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('unread_counts');
+  }
+
+  static Future<void> clearAllNotifications() async {
+    await _notifications.cancelAll();
   }
 }

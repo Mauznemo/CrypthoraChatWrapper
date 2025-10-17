@@ -26,6 +26,7 @@ class ChatPage extends StatefulWidget {
 
 class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   InAppWebViewController? controller;
+  String? _serverUrl;
   bool isReady = false;
   bool _loadError = false;
   String _errorMessage = '';
@@ -70,9 +71,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
     _packageInfo = await PackageInfo.fromPlatform();
 
-    //TODO: clear unread counts
+    PushService.clearUnreadCounts();
+    PushService.clearAllNotifications();
 
-    String? serverUrl = _prefs?.getString('server_url');
+    _serverUrl = _prefs?.getString('server_url');
 
     _topic = _prefs?.getString('topic');
 
@@ -86,8 +88,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
     await I18nHelper.saveCurrentLocale(context);
 
-    if (serverUrl == null ||
-        serverUrl.isEmpty ||
+    if (_serverUrl == null ||
+        _serverUrl!.isEmpty ||
         _topic == null ||
         _topic!.isEmpty) {
       Navigator.pushReplacement(
@@ -110,29 +112,32 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     if (launchDetails?.didNotificationLaunchApp == true) {
       final String? payload = launchDetails!.notificationResponse?.payload;
       if (payload != null && payload.isNotEmpty) {
-        developer.log(
-          'App launched from notification with payload: $payload',
-          name: 'foreground_service',
+        debugPrint(
+          '[chat_page] Init: App launched from notification with payload: $payload',
         );
 
         chatId = payload;
       }
     }
 
-    if (chatId != null) {
-      if (serverUrl.endsWith('/')) {
-        serverUrl = serverUrl.substring(0, serverUrl.length - 1);
-      }
-      _serverUri = Uri.parse(
-        '$serverUrl/chat',
-      ).replace(queryParameters: {'chatId': chatId});
-    } else {
-      _serverUri = Uri.parse(serverUrl);
-    }
+    _serverUri = _getChatUri(chatId);
 
     setState(() {
       isReady = true;
     });
+  }
+
+  Uri _getChatUri([String? chatId]) {
+    if (chatId != null) {
+      if (_serverUrl!.endsWith('/')) {
+        _serverUrl = _serverUrl!.substring(0, _serverUrl!.length - 1);
+      }
+      return Uri.parse(
+        '$_serverUrl/chat',
+      ).replace(queryParameters: {'chatId': chatId});
+    } else {
+      return Uri.parse(_serverUrl!);
+    }
   }
 
   @override
@@ -161,6 +166,26 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         );
         break;
       case AppLifecycleState.resumed:
+        PushService.clearUnreadCounts();
+        PushService.clearAllNotifications();
+
+        final NotificationAppLaunchDetails? launchDetails = await _notifications
+            .getNotificationAppLaunchDetails();
+
+        if (launchDetails?.didNotificationLaunchApp == true) {
+          final String? payload = launchDetails!.notificationResponse?.payload;
+          if (payload != null && payload.isNotEmpty) {
+            debugPrint(
+              '[chat_page] AppLifecycleState.resumed: App launched from notification with payload: $payload',
+            );
+            _serverUri = _getChatUri(payload);
+            if (_serverUri == null) return;
+            controller?.loadUrl(
+              urlRequest: URLRequest(url: WebUri(_serverUri.toString())),
+            );
+          }
+        }
+
         await controller?.evaluateJavascript(
           source: """
       if (window.connectSocket) {

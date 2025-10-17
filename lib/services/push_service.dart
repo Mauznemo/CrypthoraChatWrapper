@@ -24,7 +24,6 @@ class PushService {
   static void onNewEndpoint(PushEndpoint endpoint, String instance) {
     debugPrint("[push_service] New endpoint: ${endpoint.url}");
 
-    // TODO: Send endpoint to server
     saveEndpoint(endpoint);
   }
 
@@ -34,7 +33,6 @@ class PushService {
 
   static void onUnregistered(String instance) {
     debugPrint("Unregistered");
-    // Clean up endpoint server
   }
 
   @pragma('vm:entry-point')
@@ -50,7 +48,10 @@ class PushService {
       final groupType = data['groupType'] as String;
       final timestamp = data['timestamp'] as int;
 
-      await _incrementUnreadCount(chatId);
+      final count = await _incrementUnreadCount(chatId);
+      debugPrint(
+        "[push_service] Incremented unread count for $chatId to $count",
+      );
 
       await _storePendingNotification(
         chatId,
@@ -69,7 +70,6 @@ class PushService {
 
   static Future<void> saveEndpoint(PushEndpoint endpoint) async {
     final prefs = await SharedPreferences.getInstance();
-    // await prefs.setString('unifiedpush_endpoint', endpoint.url);
     final topic = Utils.extractNtfyTopic(endpoint.url);
     await prefs.setString('topic', topic);
   }
@@ -222,10 +222,11 @@ class PushService {
     await prefs.setString('unread_counts', jsonEncode(counts));
   }
 
-  static Future<void> _incrementUnreadCount(String chatId) async {
+  static Future<int> _incrementUnreadCount(String chatId) async {
     final counts = await _getUnreadCounts();
     counts[chatId] = (counts[chatId] ?? 0) + 1;
     await _saveUnreadCounts(counts);
+    return counts[chatId] ?? 0;
   }
 
   static Future<int> _getUnreadCount(String chatId) async {
@@ -255,6 +256,7 @@ class PushService {
   }
 
   static Future<void> clearUnreadCounts() async {
+    debugPrint("[push_service] Clearing unread counts");
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('unread_counts');
   }

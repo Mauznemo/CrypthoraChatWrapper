@@ -67,6 +67,14 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     final NotificationAppLaunchDetails? launchDetails = await _notifications
         .getNotificationAppLaunchDetails();
 
+    final isInForeground =
+        WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
+
+    if (!isInForeground) {
+      debugPrint('[chat_page] App running in background, skipping init');
+      return;
+    }
+
     _prefs = await SharedPreferences.getInstance();
 
     _packageInfo = await PackageInfo.fromPlatform();

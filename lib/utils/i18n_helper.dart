@@ -9,16 +9,26 @@ class I18nHelper {
   static String _locale = 'en';
 
   /// Load the translation file for the given locale
-  static Future<void> load(String locale) async {
+  static Future<void> load(
+    String locale, [
+    Map<String, dynamic>? translations,
+  ]) async {
     _locale = locale;
-    final jsonStr = await rootBundle.loadString('assets/i18n/$locale.json');
-    _translations = json.decode(jsonStr) as Map<String, dynamic>;
+    debugPrint('[i18n_helper] Setting locale to $locale');
+    if (translations == null) {
+      final jsonStr = await rootBundle.loadString('assets/i18n/$locale.json');
+      _translations = json.decode(jsonStr) as Map<String, dynamic>;
+    } else {
+      debugPrint('[i18n_helper] Setting translations to custom set');
+      _translations = translations;
+    }
   }
 
   /// Get a translation by key
   ///optionally provide variables for placeholders.
   static String t(String key, [Map<String, String>? vars]) {
     if (_translations == null) {
+      debugPrint('[i18n_helper] No translations loaded, returning key: $key');
       return key;
     }
 

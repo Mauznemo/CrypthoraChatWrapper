@@ -23,6 +23,7 @@
   "server-settings": {
     "notification-server-url": "URL des Benachrichtigungsservers",
     "server-url": "Server-URL",
-    "set-server": "Server festlegen"
+    "set-server": "Server festlegen",
+    "push-provider": "Push-Anbieter"
   }
 }

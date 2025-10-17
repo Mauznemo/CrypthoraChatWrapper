@@ -1,10 +1,19 @@
 import 'package:crypthora_chat_wrapper/pages/chat_page.dart';
+import 'package:crypthora_chat_wrapper/services/push_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_i18n/flutter_i18n.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:unifiedpush/unifiedpush.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  await UnifiedPush.initialize(
+    onNewEndpoint: PushService.onNewEndpoint,
+    onRegistrationFailed: PushService.onRegistrationFailed,
+    onUnregistered: PushService.onUnregistered,
+    onMessage: PushService.onMessage,
+  ).then((registered) => {if (registered) PushService.register()});
 
   runApp(
     MaterialApp(

@@ -2,7 +2,7 @@ name: crypthora_chat_wrapper
 description: "Wrapper for CrypthoraChat"
 publish_to: 'none'
 
-version: 0.0.1-alpha.7+1
+version: 0.0.1-alpha.8+1
 
 environment:
   sdk: ^3.8.1
@@ -24,6 +24,8 @@ dependencies:
   connectivity_plus: ^7.0.0
   package_info_plus: ^9.0.0
   url_launcher: ^6.3.2
+  unifiedpush: ^6.2.0
+  workmanager: ^0.9.0+3
 
 
 dev_dependencies:

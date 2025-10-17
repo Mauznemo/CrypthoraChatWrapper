@@ -4,6 +4,7 @@ import 'dart:developer' as developer;
 
 import 'package:crypthora_chat_wrapper/pages/add_server_page.dart';
 import 'package:crypthora_chat_wrapper/services/foreground_notification_service.dart';
+import 'package:crypthora_chat_wrapper/services/push_service.dart';
 import 'package:crypthora_chat_wrapper/utils/i18n_helper.dart';
 import 'package:crypthora_chat_wrapper/utils/utils.dart';
 import 'package:flutter/material.dart';
@@ -25,11 +26,13 @@ class ChatPage extends StatefulWidget {
 
 class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   InAppWebViewController? controller;
+  String? _serverUrl;
   bool isReady = false;
   bool _loadError = false;
   String _errorMessage = '';
   SharedPreferences? _prefs;
   PackageInfo? _packageInfo;
+  String? _topic;
 
   InAppWebViewSettings get _webViewSettings => InAppWebViewSettings(
     // Performance optimizations
@@ -64,21 +67,39 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     final NotificationAppLaunchDetails? launchDetails = await _notifications
         .getNotificationAppLaunchDetails();
 
+    final isInForeground =
+        WidgetsBinding.instance.lifecycleState == AppLifecycleState.resumed;
+
+    if (!isInForeground) {
+      debugPrint('[chat_page] App running in background, skipping init');
+      return;
+    }
+
     _prefs = await SharedPreferences.getInstance();
 
     _packageInfo = await PackageInfo.fromPlatform();
 
-    if (await FlutterForegroundTask.isRunningService) {
-      FlutterForegroundTask.sendDataToTask({'resetUnreadCounts': true});
+    PushService.clearUnreadCounts();
+    PushService.clearAllNotifications();
+
+    _serverUrl = _prefs?.getString('server_url');
+
+    _topic = _prefs?.getString('topic');
+
+    if (_topic == null || _topic!.isEmpty) {
+      await Future.delayed(const Duration(seconds: 5));
+      _prefs?.reload();
+      _topic = _prefs?.getString('topic');
     }
 
-    String? serverUrl = _prefs?.getString('serverUrl');
-    String? notificationServerUrl = _prefs?.getString('notificationServerUrl');
-    String? topic = _prefs?.getString('topic');
+    debugPrint('[chat_page] topic: $_topic');
 
     await I18nHelper.saveCurrentLocale(context);
 
-    if (serverUrl == null || notificationServerUrl == null || topic == null) {
+    if (_serverUrl == null ||
+        _serverUrl!.isEmpty ||
+        _topic == null ||
+        _topic!.isEmpty) {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
@@ -88,36 +109,43 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       return;
     }
 
+    if (await Permission.notification.isDenied) {
+      await Permission.notification.request();
+    }
+
+    // await PushService.register();
+
     String? chatId;
 
     if (launchDetails?.didNotificationLaunchApp == true) {
       final String? payload = launchDetails!.notificationResponse?.payload;
       if (payload != null && payload.isNotEmpty) {
-        developer.log(
-          'App launched from notification with payload: $payload',
-          name: 'foreground_service',
+        debugPrint(
+          '[chat_page] Init: App launched from notification with payload: $payload',
         );
 
         chatId = payload;
       }
     }
 
-    if (chatId != null) {
-      if (serverUrl.endsWith('/')) {
-        serverUrl = serverUrl.substring(0, serverUrl.length - 1);
-      }
-      _serverUri = Uri.parse(
-        '$serverUrl/chat',
-      ).replace(queryParameters: {'chatId': chatId});
-    } else {
-      _serverUri = Uri.parse(serverUrl);
-    }
+    _serverUri = _getChatUri(chatId);
 
     setState(() {
       isReady = true;
     });
-    _initForegroundTask();
-    _startForegroundTask();
+  }
+
+  Uri _getChatUri([String? chatId]) {
+    if (chatId != null) {
+      if (_serverUrl!.endsWith('/')) {
+        _serverUrl = _serverUrl!.substring(0, _serverUrl!.length - 1);
+      }
+      return Uri.parse(
+        '$_serverUrl/chat',
+      ).replace(queryParameters: {'chatId': chatId});
+    } else {
+      return Uri.parse(_serverUrl!);
+    }
   }
 
   @override
@@ -130,7 +158,6 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    _stopForegroundTask();
     super.dispose();
   }
 
@@ -147,6 +174,26 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         );
         break;
       case AppLifecycleState.resumed:
+        PushService.clearUnreadCounts();
+        PushService.clearAllNotifications();
+
+        final NotificationAppLaunchDetails? launchDetails = await _notifications
+            .getNotificationAppLaunchDetails();
+
+        if (launchDetails?.didNotificationLaunchApp == true) {
+          final String? payload = launchDetails!.notificationResponse?.payload;
+          if (payload != null && payload.isNotEmpty) {
+            debugPrint(
+              '[chat_page] AppLifecycleState.resumed: App launched from notification with payload: $payload',
+            );
+            _serverUri = _getChatUri(payload);
+            if (_serverUri == null) return;
+            controller?.loadUrl(
+              urlRequest: URLRequest(url: WebUri(_serverUri.toString())),
+            );
+          }
+        }
+
         await controller?.evaluateJavascript(
           source: """
       if (window.connectSocket) {
@@ -162,7 +209,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     }
   }
 
-  void _injectFlutterInfo(String topic) {
+  Future<void> _injectFlutterInfo(String topic) async {
     final padding = MediaQuery.of(context).padding;
 
     final data =
@@ -178,85 +225,19 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             }
           ''';
 
-    controller?.evaluateJavascript(source: data);
-  }
-
-  void _initForegroundTask() {
-    developer.log('Initializing foreground task', name: 'main');
-    FlutterForegroundTask.init(
-      androidNotificationOptions: AndroidNotificationOptions(
-        channelId: 'foreground_service_min',
-        channelName: 'Push Notification Service',
-        channelDescription:
-            'Keeps the app connected for real-time notifications',
-        channelImportance: NotificationChannelImportance.MIN,
-        priority: NotificationPriority.MIN,
-        showBadge: false,
-      ),
-      iosNotificationOptions: const IOSNotificationOptions(
-        showNotification: false,
-        playSound: false,
-      ),
-      foregroundTaskOptions: ForegroundTaskOptions(
-        eventAction: ForegroundTaskEventAction.repeat(
-          const Duration(hours: 2).inMilliseconds,
-        ),
-        autoRunOnBoot: true,
-        allowWakeLock: true,
-        allowWifiLock: true,
-      ),
+    await controller?.evaluateJavascript(source: data);
+    await controller?.evaluateJavascript(
+      source: """
+      if (window.onFlutterSafeAreaInsetsChanged) {
+        window.onFlutterSafeAreaInsetsChanged();
+      }
+    """,
     );
   }
 
   bool _isAppUrl(String url) {
-    String? serverUrl = _prefs?.getString('serverUrl') ?? 'http';
+    String? serverUrl = _prefs?.getString('server_url') ?? 'http';
     return url.startsWith(serverUrl);
-  }
-
-  Future<void> _startForegroundTask() async {
-    developer.log('Starting foreground task', name: 'main');
-    final status = await Permission.notification.status;
-    if (!status.isGranted) {
-      await Permission.notification.request();
-    }
-
-    if (!await FlutterForegroundTask.isIgnoringBatteryOptimizations) {
-      await FlutterForegroundTask.requestIgnoreBatteryOptimization();
-    }
-
-    if (!await FlutterForegroundTask.isRunningService) {
-      await FlutterForegroundTask.startService(
-        serviceId: 256, // Unique service ID
-        serviceTypes: [ForegroundServiceTypes.remoteMessaging],
-        notificationTitle: FlutterI18n.translate(
-          context,
-          'notifications.service.starting',
-        ),
-        notificationText: FlutterI18n.translate(
-          context,
-          'notifications.service.starting-text',
-        ),
-        callback: startCallback,
-      );
-    } //else {
-    //   await FlutterForegroundTask.updateService(
-    //     notificationTitle: FlutterI18n.translate(
-    //       context,
-    //       'notifications.service.connected',
-    //     ),
-    //     notificationText: FlutterI18n.translate(
-    //       context,
-    //       'notifications.service.receiving',
-    //     ),
-    //   );
-    // }
-  }
-
-  Future<void> _stopForegroundTask() async {
-    developer.log('Stopping foreground task', name: 'main');
-    if (await FlutterForegroundTask.isRunningService) {
-      await FlutterForegroundTask.stopService();
-    }
   }
 
   @override
@@ -300,8 +281,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                       },
                       initialUserScripts: UnmodifiableListView<UserScript>([
                         UserScript(
-                          source: """
+                          source:
+                              """
                                 window.isFlutterWebView = true;
+                                window.topic = "${_topic ?? ''}";
                           """,
                           injectionTime:
                               UserScriptInjectionTime.AT_DOCUMENT_START,
@@ -429,10 +412,4 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             ),
     );
   }
-}
-
-@pragma('vm:entry-point')
-void startCallback() {
-  developer.log('Foreground service started', name: 'main startCallback');
-  FlutterForegroundTask.setTaskHandler(NotificationTaskHandler());
 }

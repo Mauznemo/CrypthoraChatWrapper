@@ -9,4 +9,21 @@ class Utils {
       (index) => chars[rand.nextInt(chars.length)],
     ).join();
   }
+
+  static String extractNtfyTopic(String url) {
+    try {
+      final uri = Uri.parse(url);
+
+      final topic = uri.pathSegments.isNotEmpty ? uri.pathSegments.last : '';
+
+      // Preserve the ?up=1 parameter if it exists
+      if (uri.queryParameters.containsKey('up')) {
+        return '$topic?up=${uri.queryParameters['up']}';
+      }
+
+      return topic;
+    } catch (e) {
+      return '';
+    }
+  }
 }

@@ -3,12 +3,9 @@ import 'dart:collection';
 import 'dart:developer' as developer;
 
 import 'package:crypthora_chat_wrapper/pages/add_server_page.dart';
-import 'package:crypthora_chat_wrapper/services/foreground_notification_service.dart';
 import 'package:crypthora_chat_wrapper/services/push_service.dart';
 import 'package:crypthora_chat_wrapper/utils/i18n_helper.dart';
-import 'package:crypthora_chat_wrapper/utils/utils.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_foreground_task/flutter_foreground_task.dart';
 import 'package:flutter_i18n/flutter_i18n.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -35,21 +32,17 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   String? _topic;
 
   InAppWebViewSettings get _webViewSettings => InAppWebViewSettings(
-    // Performance optimizations
     useHybridComposition: true,
     hardwareAcceleration: true,
 
-    // Rendering optimizations
     allowsBackForwardNavigationGestures: true,
     disableHorizontalScroll: false,
     disableVerticalScroll: false,
 
-    // Disable some heavy features if not needed
     supportZoom: false,
     builtInZoomControls: false,
     displayZoomControls: false,
 
-    // Network optimizations
     useShouldOverrideUrlLoading: true,
 
     offscreenPreRaster: true,
@@ -104,8 +97,6 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     if (await Permission.notification.isDenied) {
       await Permission.notification.request();
     }
-
-    // await PushService.register();
 
     String? chatId;
 
@@ -234,174 +225,152 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    return WithForegroundTask(
-      child: !_loadError
-          ? Scaffold(
-              body: isReady
-                  ? InAppWebView(
-                      initialUrlRequest: URLRequest(
-                        url: WebUri(_serverUri.toString()),
-                      ),
-                      initialSettings: _webViewSettings,
-                      onWebViewCreated: (InAppWebViewController webController) {
-                        controller = webController;
-                        controller?.addJavaScriptHandler(
-                          handlerName: 'openSettings',
-                          callback: (args) async {
-                            Navigator.pushReplacement(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) =>
-                                    AddServerPage(canGoBack: true),
-                              ),
-                            );
-                          },
-                        );
-
-                        controller?.addJavaScriptHandler(
-                          handlerName: 'regenerateNtfyTopic',
-                          callback: (args) async {
-                            String topic = Utils.generateRandomTopic();
-
-                            await _prefs?.setString('topic', topic);
-
-                            FlutterForegroundTask.sendDataToTask({
-                              'topic': topic,
-                            });
-                          },
-                        );
-                      },
-                      initialUserScripts: UnmodifiableListView<UserScript>([
-                        UserScript(
-                          source:
-                              """
+    return !_loadError
+        ? Scaffold(
+            body: isReady
+                ? InAppWebView(
+                    initialUrlRequest: URLRequest(
+                      url: WebUri(_serverUri.toString()),
+                    ),
+                    initialSettings: _webViewSettings,
+                    onWebViewCreated: (InAppWebViewController webController) {
+                      controller = webController;
+                      controller?.addJavaScriptHandler(
+                        handlerName: 'openSettings',
+                        callback: (args) async {
+                          Navigator.pushReplacement(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) =>
+                                  AddServerPage(canGoBack: true),
+                            ),
+                          );
+                        },
+                      );
+                    },
+                    initialUserScripts: UnmodifiableListView<UserScript>([
+                      UserScript(
+                        source:
+                            """
                                 window.isFlutterWebView = true;
                                 window.topic = "${_topic ?? ''}";
                           """,
-                          injectionTime:
-                              UserScriptInjectionTime.AT_DOCUMENT_START,
-                        ),
-                      ]),
-                      onUpdateVisitedHistory:
-                          (controller, url, isReload) async {
-                            if (url != null && !_isAppUrl(url.toString())) {
-                              controller.goBack();
-                              debugPrint(
-                                '[foreground_service] Launching URL: $url',
-                              );
-                              await launchUrl(
-                                url,
-                                mode: LaunchMode.externalApplication,
-                              );
-                            }
-                          },
-                      onLoadStop:
-                          (InAppWebViewController webController, WebUri? url) {
-                            String? topic = _prefs?.getString('topic');
-                            if (topic != null) {
-                              _injectFlutterInfo(topic);
-                            } else {
-                              developer.log(
-                                'Missing topic, not injecting',
-                                name: 'foreground_service',
-                              );
-                            }
-                          },
-                      onReceivedError: (controller, request, error) => {
-                        setState(() {
-                          _loadError = true;
-                          _errorMessage = error.description;
-                        }),
-                      },
-                      shouldOverrideUrlLoading:
-                          (controller, navigationAction) async {
-                            return NavigationActionPolicy.ALLOW;
-                          },
-                      onPermissionRequest: (controller, permissionRequest) async {
-                        developer.log(
-                          'Permission request: ${permissionRequest.resources}',
+                        injectionTime:
+                            UserScriptInjectionTime.AT_DOCUMENT_START,
+                      ),
+                    ]),
+                    onUpdateVisitedHistory: (controller, url, isReload) async {
+                      if (url != null && !_isAppUrl(url.toString())) {
+                        controller.goBack();
+                        debugPrint('[foreground_service] Launching URL: $url');
+                        await launchUrl(
+                          url,
+                          mode: LaunchMode.externalApplication,
                         );
+                      }
+                    },
+                    onLoadStop:
+                        (InAppWebViewController webController, WebUri? url) {
+                          String? topic = _prefs?.getString('topic');
+                          if (topic != null) {
+                            _injectFlutterInfo(topic);
+                          } else {
+                            developer.log(
+                              'Missing topic, not injecting',
+                              name: 'foreground_service',
+                            );
+                          }
+                        },
+                    onReceivedError: (controller, request, error) => {
+                      setState(() {
+                        _loadError = true;
+                        _errorMessage = error.description;
+                      }),
+                    },
+                    shouldOverrideUrlLoading:
+                        (controller, navigationAction) async {
+                          return NavigationActionPolicy.ALLOW;
+                        },
+                    onPermissionRequest: (controller, permissionRequest) async {
+                      developer.log(
+                        'Permission request: ${permissionRequest.resources}',
+                      );
 
-                        if (permissionRequest.resources.contains(
-                          PermissionResourceType.CAMERA,
-                        )) {
-                          final status = await Permission.camera.request();
-                          return PermissionResponse(
-                            resources: permissionRequest.resources,
-                            action: status == PermissionStatus.granted
-                                ? PermissionResponseAction.GRANT
-                                : PermissionResponseAction.DENY,
-                          );
-                        }
-
+                      if (permissionRequest.resources.contains(
+                        PermissionResourceType.CAMERA,
+                      )) {
+                        final status = await Permission.camera.request();
                         return PermissionResponse(
                           resources: permissionRequest.resources,
-                          action: PermissionResponseAction.DENY,
+                          action: status == PermissionStatus.granted
+                              ? PermissionResponseAction.GRANT
+                              : PermissionResponseAction.DENY,
                         );
-                      },
-                    )
-                  : Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          CircularProgressIndicator(),
-                          Text(
-                            FlutterI18n.translate(
-                              context,
-                              'app.loading-webview',
-                            ),
-                          ),
-                        ],
-                      ),
+                      }
+
+                      return PermissionResponse(
+                        resources: permissionRequest.resources,
+                        action: PermissionResponseAction.DENY,
+                      );
+                    },
+                  )
+                : Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        CircularProgressIndicator(),
+                        Text(
+                          FlutterI18n.translate(context, 'app.loading-webview'),
+                        ),
+                      ],
                     ),
-            )
-          : Scaffold(
-              resizeToAvoidBottomInset: true,
-              appBar: AppBar(title: Text('CrypthoraChat Wrapper')),
-              body: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      FlutterI18n.translate(
+                  ),
+          )
+        : Scaffold(
+            resizeToAvoidBottomInset: true,
+            appBar: AppBar(title: Text('CrypthoraChat Wrapper')),
+            body: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    FlutterI18n.translate(
+                      context,
+                      'app.failed-to-load-webview',
+                    ),
+                    style: TextStyle(fontSize: 24),
+                  ),
+                  const SizedBox(height: 16),
+                  Text(_errorMessage, style: TextStyle(fontSize: 16)),
+                  const SizedBox(height: 5),
+                  Text('Server: $_serverUri', style: TextStyle(fontSize: 16)),
+                  const SizedBox(height: 56),
+                  FilledButton(
+                    onPressed: () {
+                      Navigator.pushReplacement(
                         context,
-                        'app.failed-to-load-webview',
-                      ),
-                      style: TextStyle(fontSize: 24),
+                        MaterialPageRoute(builder: (context) => ChatPage()),
+                      );
+                    },
+                    child: Text(FlutterI18n.translate(context, 'app.retry')),
+                  ),
+                  const SizedBox(height: 5),
+                  FilledButton(
+                    onPressed: () {
+                      Navigator.pushReplacement(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => AddServerPage(canGoBack: true),
+                        ),
+                      );
+                    },
+                    child: Text(
+                      FlutterI18n.translate(context, 'app.change-server'),
                     ),
-                    const SizedBox(height: 16),
-                    Text(_errorMessage, style: TextStyle(fontSize: 16)),
-                    const SizedBox(height: 5),
-                    Text('Server: $_serverUri', style: TextStyle(fontSize: 16)),
-                    const SizedBox(height: 56),
-                    FilledButton(
-                      onPressed: () {
-                        Navigator.pushReplacement(
-                          context,
-                          MaterialPageRoute(builder: (context) => ChatPage()),
-                        );
-                      },
-                      child: Text(FlutterI18n.translate(context, 'app.retry')),
-                    ),
-                    const SizedBox(height: 5),
-                    FilledButton(
-                      onPressed: () {
-                        Navigator.pushReplacement(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) =>
-                                AddServerPage(canGoBack: true),
-                          ),
-                        );
-                      },
-                      child: Text(
-                        FlutterI18n.translate(context, 'app.change-server'),
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
             ),
-    );
+          );
   }
 }

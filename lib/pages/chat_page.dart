@@ -247,6 +247,18 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                           );
                         },
                       );
+
+                      controller?.addJavaScriptHandler(
+                        handlerName: 'openUrl',
+                        callback: (args) async {
+                          final String url = args[0];
+                          debugPrint('[chat_page] Launching URL: $url');
+                          await launchUrl(
+                            Uri.parse(url),
+                            mode: LaunchMode.externalApplication,
+                          );
+                        },
+                      );
                     },
                     initialUserScripts: UnmodifiableListView<UserScript>([
                       UserScript(
@@ -262,7 +274,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                     onUpdateVisitedHistory: (controller, url, isReload) async {
                       if (url != null && !_isAppUrl(url.toString())) {
                         controller.goBack();
-                        debugPrint('[foreground_service] Launching URL: $url');
+                        debugPrint(
+                          '[chat_page] Launching URL (fallback on navigate): $url',
+                        );
                         await launchUrl(
                           url,
                           mode: LaunchMode.externalApplication,

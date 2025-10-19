@@ -1,6 +1,7 @@
 package dev.mauznemo.crypthora_chat_wrapper
 
 import android.content.Intent
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import androidx.core.content.pm.ShortcutInfoCompat
 import androidx.core.content.pm.ShortcutManagerCompat
@@ -9,8 +10,7 @@ import io.flutter.embedding.android.FlutterActivity
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
-    private val CHANNEL =
-            "dev.mauznemo.crypthora_chat_wrapper/shortcuts" // Match Flutter's MethodChannel
+    private val CHANNEL = "dev.mauznemo.crypthora_chat_wrapper/shortcuts"
 
     override fun configureFlutterEngine(flutterEngine: io.flutter.embedding.engine.FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -36,7 +36,27 @@ class MainActivity : FlutterActivity() {
 
     private fun pushShortcut(shortcutId: String, shortLabel: String, imageBytes: ByteArray) {
         val bitmap = BitmapFactory.decodeByteArray(imageBytes, 0, imageBytes.size)
-        val icon = IconCompat.createWithBitmap(bitmap)
+        val icon =
+                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                    val scaledSize = (bitmap.width * 0.68).toInt()
+                    val scaledBitmap =
+                            Bitmap.createScaledBitmap(bitmap, scaledSize, scaledSize, true)
+
+                    val paddedBitmap =
+                            Bitmap.createBitmap(
+                                    bitmap.width,
+                                    bitmap.height,
+                                    Bitmap.Config.ARGB_8888
+                            )
+                    val canvas = android.graphics.Canvas(paddedBitmap)
+                    val left = (bitmap.width - scaledSize) / 2f
+                    val top = (bitmap.height - scaledSize) / 2f
+                    canvas.drawBitmap(scaledBitmap, left, top, null)
+
+                    IconCompat.createWithAdaptiveBitmap(paddedBitmap)
+                } else {
+                    IconCompat.createWithBitmap(bitmap)
+                }
 
         val person = androidx.core.app.Person.Builder().setName(shortLabel).setIcon(icon).build()
 
@@ -49,7 +69,7 @@ class MainActivity : FlutterActivity() {
         val shortcut =
                 ShortcutInfoCompat.Builder(this, shortcutId)
                         .setShortLabel(shortLabel)
-                        .setLongLived(true) // Persists across reboots if pinned
+                        .setLongLived(true)
                         .setIntent(intent)
                         .setPerson(person)
                         .setIcon(icon)

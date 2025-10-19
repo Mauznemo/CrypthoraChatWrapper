@@ -39,7 +39,7 @@ class ImageCache {
 
       // Download image
       debugPrint('[image_cache] Downloading image from URL');
-      final response = await http.get(Uri.parse('$url&size=256'));
+      final response = await http.get(Uri.parse('$url&size=512'));
       if (response.statusCode == 200) {
         final imageBytes = response.bodyBytes;
         debugPrint(

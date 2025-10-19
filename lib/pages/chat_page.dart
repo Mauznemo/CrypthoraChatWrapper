@@ -150,8 +150,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       case AppLifecycleState.paused:
         await controller?.evaluateJavascript(
           source: """
-      if (window.disconnectSocket) {
-        window.disconnectSocket();
+      if (window.setSocketInactive) {
+        window.setSocketInactive();
       }
     """,
         );
@@ -169,18 +169,21 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
             debugPrint(
               '[chat_page] AppLifecycleState.resumed: App launched from notification with payload: $payload',
             );
-            _serverUri = _getChatUri(payload);
-            if (_serverUri == null) return;
-            controller?.loadUrl(
-              urlRequest: URLRequest(url: WebUri(_serverUri.toString())),
+            await controller?.evaluateJavascript(
+              source:
+                  """
+          if (window.goToChat) {
+            window.goToChat('$payload');
+          }
+        """,
             );
           }
         }
 
         await controller?.evaluateJavascript(
           source: """
-      if (window.connectSocket) {
-        window.connectSocket();
+      if (window.setSocketActive) {
+        window.setSocketActive();
       }
     """,
         );

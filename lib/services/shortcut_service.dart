@@ -12,8 +12,6 @@ class ShortcutService {
     shortLabel, // Chat name/username, max ~10 chars for launcher
     required Uint8List? imageBytes, // Profile/group image bytes
   }) async {
-    if (imageBytes == null) return;
-
     try {
       await _shortcutChannel.invokeMethod('pushShortcut', {
         'shortcutId': shortcutId,

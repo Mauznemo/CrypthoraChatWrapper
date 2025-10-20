@@ -493,6 +493,15 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "0.2.1"
+  person_shortcut_creator:
+    dependency: "direct main"
+    description:
+      path: "."
+      ref: HEAD
+      resolved-ref: "04cf6fbe3b0effc52eaadcc885dc1fac80123455"
+      url: "https://github.com/Mauznemo/flutter_person_shortcut_creator.git"
+    source: git
+    version: "0.0.1"
   petitparser:
     dependency: transitive
     description:

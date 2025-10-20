@@ -1,11 +1,12 @@
 import 'dart:convert';
 
-import 'package:crypthora_chat_wrapper/services/shortcut_service.dart';
+import 'package:crypthora_chat_wrapper/utils/disk_logger.dart';
 import 'package:crypthora_chat_wrapper/utils/i18n_helper.dart';
 import 'package:crypthora_chat_wrapper/utils/utils.dart';
 import 'package:crypthora_chat_wrapper/utils/image_cache.dart';
 import 'package:flutter/material.dart' hide ImageCache;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:person_shortcut_creator/person_shortcut_creator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:unifiedpush/unifiedpush.dart';
 
@@ -36,22 +37,22 @@ class PushService {
   }
 
   void onNewEndpoint(PushEndpoint endpoint, String instance) {
-    debugPrint("[push_service] New endpoint: ${endpoint.url}");
+    DiskLogger.debug("[push_service] New endpoint: ${endpoint.url}");
 
     saveEndpoint(endpoint);
   }
 
   void onRegistrationFailed(FailedReason reason, String instance) {
-    debugPrint("[push_service] Registration failed");
+    DiskLogger.error("[push_service] Registration failed");
   }
 
   void onUnregistered(String instance) {
-    debugPrint("Unregistered");
+    DiskLogger.debug("Unregistered");
   }
 
   Future<void> onMessage(PushMessage message, String instance) async {
     String messageText = utf8.decode(message.content);
-    debugPrint("[push_service] Received message: $messageText");
+    DiskLogger.debug("[push_service] Received message: $messageText");
     try {
       final data = jsonDecode(messageText);
 
@@ -79,7 +80,7 @@ class PushService {
       debugPrint("[push_service] Stored pending notification for $chatId");
       await _scheduleNotificationUpdate(chatId);
     } catch (e) {
-      debugPrint("[push_service] Error parsing message: $e");
+      DiskLogger.error("[push_service] Error parsing message: $e");
     }
   }
 
@@ -176,13 +177,19 @@ class PushService {
     final imageCache = ImageCache();
     final imageBytes = await imageCache.getImage(imageUrl);
 
-    debugPrint("[push_service] Notification image bytes ${imageBytes?.length}");
-
-    await ShortcutService.pushDynamicShortcut(
-      shortcutId: chatId,
-      shortLabel: title,
-      imageBytes: imageBytes,
+    DiskLogger.debug(
+      "[push_service] Notification image bytes ${imageBytes?.length}",
     );
+
+    try {
+      await PersonShortcutCreator.pushDynamicShortcut(
+        shortcutId: chatId,
+        shortLabel: title,
+        imageBytes: imageBytes,
+      );
+    } catch (e) {
+      DiskLogger.error("[push_service] Error creating shortcut: $e");
+    }
 
     final chatPerson = Person(
       name: title,

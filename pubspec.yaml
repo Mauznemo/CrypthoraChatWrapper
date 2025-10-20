@@ -12,6 +12,10 @@ dependencies:
     sdk: flutter
   flutter_localizations:
     sdk: flutter
+  person_shortcut_creator:
+    # path: ../person_shortcut_creator
+    git:
+      url: https://github.com/Mauznemo/flutter_person_shortcut_creator.git
   cupertino_icons: ^1.0.8
   web_socket_channel: ^3.0.3
   flutter_local_notifications: ^19.4.1

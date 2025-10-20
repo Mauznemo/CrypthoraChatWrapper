@@ -119,9 +119,10 @@ class _AddServerPageState extends State<AddServerPage> {
                   await PushService.register();
 
                   if (mounted) {
-                    Navigator.push(
+                    Navigator.pushAndRemoveUntil(
                       context,
                       MaterialPageRoute(builder: (context) => ChatPage()),
+                      (route) => false,
                     );
                   }
                 },

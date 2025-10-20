@@ -52,10 +52,7 @@ class _AddServerPageState extends State<AddServerPage> {
         leading: widget.canGoBack
             ? IconButton(
                 onPressed: () {
-                  Navigator.pushReplacement(
-                    context,
-                    MaterialPageRoute(builder: (context) => ChatPage()),
-                  );
+                  Navigator.pop(context);
                 },
                 icon: const Icon(Icons.arrow_back),
               )

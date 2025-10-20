@@ -3,6 +3,7 @@ import 'dart:collection';
 import 'dart:developer' as developer;
 
 import 'package:crypthora_chat_wrapper/pages/add_server_page.dart';
+import 'package:crypthora_chat_wrapper/pages/settings_page.dart';
 import 'package:crypthora_chat_wrapper/services/push_service.dart';
 import 'package:crypthora_chat_wrapper/utils/i18n_helper.dart';
 import 'package:flutter/material.dart';
@@ -244,8 +245,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                           Navigator.pushReplacement(
                             context,
                             MaterialPageRoute(
-                              builder: (context) =>
-                                  AddServerPage(canGoBack: true),
+                              builder: (context) => SettingsPage(),
                             ),
                           );
                         },

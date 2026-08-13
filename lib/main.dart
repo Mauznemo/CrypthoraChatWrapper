@@ -7,6 +7,7 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 void main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // Sets up whichever push transport the user selected (UnifiedPush or FCM)
   await PushService().init();
 
   if (!args.contains("--unifiedpush-bg")) {

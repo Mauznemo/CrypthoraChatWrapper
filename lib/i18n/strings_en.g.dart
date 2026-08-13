@@ -103,6 +103,15 @@ class Translations$serverSettings$en {
 
 	/// en: 'Push Provider'
 	String get pushProvider => 'Push Provider';
+
+	/// en: 'Firebase (Google FCM)'
+	String get pushProviderFcm => 'Firebase (Google FCM)';
+
+	/// en: 'Checking server...'
+	String get checkingServer => 'Checking server...';
+
+	/// en: 'This server has no Firebase set up, so only ntfy providers are available.'
+	String get fcmUnavailable => 'This server has no Firebase set up, so only ntfy providers are available.';
 }
 
 // Path: common
@@ -168,6 +177,9 @@ extension on Translations {
 			'serverSettings.serverUrl' => 'Server URL',
 			'serverSettings.notificationServerUrl' => 'Notification Server URL',
 			'serverSettings.pushProvider' => 'Push Provider',
+			'serverSettings.pushProviderFcm' => 'Firebase (Google FCM)',
+			'serverSettings.checkingServer' => 'Checking server...',
+			'serverSettings.fcmUnavailable' => 'This server has no Firebase set up, so only ntfy providers are available.',
 			'common.save' => 'Save',
 			_ => null,
 		};

@@ -21,7 +21,10 @@
     "setServer": "Set Server",
     "serverUrl": "Server URL",
     "notificationServerUrl": "Notification Server URL",
-    "pushProvider": "Push Provider"
+    "pushProvider": "Push Provider",
+    "pushProviderFcm": "Firebase (Google FCM)",
+    "checkingServer": "Checking server...",
+    "fcmUnavailable": "This server has no Firebase set up, so only ntfy providers are available."
   },
   "common": {
     "save": "Save"

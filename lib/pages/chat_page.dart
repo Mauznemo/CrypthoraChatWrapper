@@ -5,7 +5,10 @@ import 'dart:developer' as developer;
 import 'package:crypthora_chat_wrapper/i18n/strings.g.dart';
 import 'package:crypthora_chat_wrapper/pages/add_server_page.dart';
 import 'package:crypthora_chat_wrapper/pages/settings_page.dart';
+import 'package:crypthora_chat_wrapper/services/fcm_service.dart';
 import 'package:crypthora_chat_wrapper/services/push_service.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:package_info_plus/package_info_plus.dart';
@@ -30,6 +33,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   SharedPreferences? _prefs;
   PackageInfo? _packageInfo;
   String? _topic;
+  String? _fcmToken;
+  bool _usesFcm = false;
+  StreamSubscription<String>? _tokenRefreshSub;
 
   InAppWebViewSettings get _webViewSettings => InAppWebViewSettings(
     useHybridComposition: true,
@@ -69,25 +75,25 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
     _serverUrl = _prefs?.getString('server_url');
 
-    _topic = _prefs?.getString('topic');
+    _usesFcm = await PushProvider.isFcm;
 
-    if (_topic == null || _topic!.isEmpty) {
+    await _loadPushToken();
+
+    // The registration is async and may not have landed yet on a fresh install
+    if (!_isPushRegistered) {
       await Future.delayed(const Duration(seconds: 5));
-      _prefs?.reload();
-      _topic = _prefs?.getString('topic');
+      await _prefs?.reload();
+      await _loadPushToken();
     }
 
-    debugPrint('[chat_page] topic: $_topic');
+    debugPrint('[chat_page] fcm: $_usesFcm, topic: $_topic');
 
     await _prefs?.setString(
       'locale',
       LocaleSettings.currentLocale.languageCode,
     );
 
-    if (_serverUrl == null ||
-        _serverUrl!.isEmpty ||
-        _topic == null ||
-        _topic!.isEmpty) {
+    if (_serverUrl == null || _serverUrl!.isEmpty || !_isPushRegistered) {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
@@ -121,6 +127,21 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     });
   }
 
+  /// Reads whichever push identifier the selected provider produced.
+  Future<void> _loadPushToken() async {
+    if (_usesFcm) {
+      _fcmToken = _prefs?.getString('fcm_token');
+    } else {
+      _topic = _prefs?.getString('topic');
+    }
+  }
+
+  /// The selected provider handed us something to give the web app.
+  bool get _isPushRegistered {
+    final token = _usesFcm ? _fcmToken : _topic;
+    return token != null && token.isNotEmpty;
+  }
+
   Uri _getChatUri([String? chatId]) {
     if (chatId != null) {
       if (_serverUrl!.endsWith('/')) {
@@ -138,11 +159,37 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     _init();
+    _listenForTokenRefresh();
     WidgetsBinding.instance.addObserver(this);
+  }
+
+  /// FCM tokens rotate, the web app has to re-register the new one with the server.
+  Future<void> _listenForTokenRefresh() async {
+    // Firebase is only initialized when FCM is the selected provider
+    if (!await PushProvider.isFcm || Firebase.apps.isEmpty) return;
+
+    _tokenRefreshSub = FirebaseMessaging.instance.onTokenRefresh.listen((
+      token,
+    ) async {
+      debugPrint('[chat_page] FCM token refreshed');
+      await FcmService.saveToken(token);
+      _fcmToken = token;
+
+      await controller?.evaluateJavascript(
+        source:
+            '''
+        window.fcmToken = "$token";
+        if (window.reRegisterPush) {
+          window.reRegisterPush();
+        }
+      ''',
+      );
+    });
   }
 
   @override
   void dispose() {
+    _tokenRefreshSub?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -198,14 +245,19 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _injectFlutterInfo(String topic) async {
+  /// The push identifier the web app registers with the server, only one provider is ever active.
+  String get _pushGlobals =>
+      'window.ntfyTopic = "${_usesFcm ? '' : (_topic ?? '')}";\n'
+      'window.fcmToken = "${_usesFcm ? (_fcmToken ?? '') : ''}";';
+
+  Future<void> _injectFlutterInfo() async {
     final padding = MediaQuery.of(context).padding;
 
     final data =
         '''
             window.isFlutterWebView = true;
             window.wrapperVersion = "${_packageInfo?.version ?? 'Unknown'}";
-            window.ntfyTopic = "$topic";
+            $_pushGlobals
             window.flutterSafeAreaInsets = {
               top: ${padding.top},
               bottom: ${padding.bottom},
@@ -266,11 +318,12 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                       );
                     },
                     initialUserScripts: UnmodifiableListView<UserScript>([
+                      // Set before the page runs, it registers for push on mount
                       UserScript(
                         source:
                             """
                                 window.isFlutterWebView = true;
-                                window.topic = "${_topic ?? ''}";
+                                $_pushGlobals
                           """,
                         injectionTime:
                             UserScriptInjectionTime.AT_DOCUMENT_START,
@@ -290,13 +343,12 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                     },
                     onLoadStop:
                         (InAppWebViewController webController, WebUri? url) {
-                          String? topic = _prefs?.getString('topic');
-                          if (topic != null) {
-                            _injectFlutterInfo(topic);
+                          if (_isPushRegistered) {
+                            _injectFlutterInfo();
                           } else {
                             developer.log(
-                              'Missing topic, not injecting',
-                              name: 'foreground_service',
+                              'Missing push token, not injecting',
+                              name: 'chat_page',
                             );
                           }
                         },

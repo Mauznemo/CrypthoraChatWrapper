@@ -1,21 +1,70 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:crypthora_chat_wrapper/i18n/strings.g.dart';
+import 'package:crypthora_chat_wrapper/services/fcm_service.dart';
 import 'package:crypthora_chat_wrapper/utils/disk_logger.dart';
 import 'package:crypthora_chat_wrapper/utils/utils.dart';
 import 'package:crypthora_chat_wrapper/utils/image_cache.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart' hide ImageCache;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:person_shortcut_creator/person_shortcut_creator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:unifiedpush/unifiedpush.dart';
 
+/// Entry point for FCM messages that arrive while the app isn't running.
+///
+/// This runs in its own isolate spawned by the FCM plugin, so Firebase has to be initialized again
+/// from the cached config. UnifiedPush has its own equivalent, it re-runs `main()` with
+/// `--unifiedpush-bg`.
+@pragma('vm:entry-point')
+Future<void> fcmBackgroundHandler(RemoteMessage message) async {
+  if (!await FcmService.initialize()) return;
+  await PushService().handlePayload(message.data);
+}
+
+/// The push transport the user picked on [AddServerPage], stored under `push_provider`.
+///
+/// Anything that isn't [fcm] is a UnifiedPush distributor name (usually the ntfy app).
+class PushProvider {
+  static const fcm = 'fcm';
+
+  static Future<String?> get current async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.reload();
+    return prefs.getString('push_provider');
+  }
+
+  static Future<bool> get isFcm async => await current == fcm;
+
+  static Future<void> save(String provider) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('push_provider', provider);
+  }
+}
+
+/// Receives pushes over whichever transport is active and turns them into local notifications.
+///
+/// Both transports funnel into [handlePayload], so the notification building (coalescing bursts per
+/// chat, unread counts, conversation shortcuts) is identical no matter where the message came from.
 class PushService {
   final FlutterLocalNotificationsPlugin _notifications =
       FlutterLocalNotificationsPlugin();
   static final _instance = 'crypthora_chat';
+  static StreamSubscription<RemoteMessage>? _fcmSub;
 
+  /// Sets up only the transport the user selected.
   Future<void> init() async {
+    if (await PushProvider.isFcm) {
+      await initFcm();
+      return;
+    }
+
+    await initUnifiedPush();
+  }
+
+  Future<void> initUnifiedPush() async {
     await UnifiedPush.initialize(
       onNewEndpoint: onNewEndpoint,
       onRegistrationFailed: onRegistrationFailed,
@@ -26,6 +75,22 @@ class PushService {
         register();
       }
     });
+  }
+
+  /// Wires up both foreground and background FCM messages.
+  ///
+  /// Also called right after the user switches to FCM, so notifications work without an app restart.
+  Future<bool> initFcm() async {
+    if (!await FcmService.initialize()) return false;
+
+    FirebaseMessaging.onBackgroundMessage(fcmBackgroundHandler);
+
+    _fcmSub?.cancel();
+    _fcmSub = FirebaseMessaging.onMessage.listen((message) {
+      DiskLogger.debug("[push_service] Received FCM message: ${message.data}");
+      handlePayload(message.data);
+    });
+    return true;
   }
 
   static Future<void> register() async {
@@ -54,13 +119,26 @@ class PushService {
     String messageText = utf8.decode(message.content);
     DiskLogger.debug("[push_service] Received message: $messageText");
     try {
-      final data = jsonDecode(messageText);
+      await handlePayload(jsonDecode(messageText) as Map<String, dynamic>);
+    } catch (e) {
+      DiskLogger.error("[push_service] Error parsing message: $e");
+    }
+  }
 
+  /// Handles a notification payload from either transport.
+  ///
+  /// The payload is metadata only, it never contains message content. FCM delivers every data value
+  /// as a string while ntfy sends real JSON, so [timestamp] is coerced rather than cast.
+  Future<void> handlePayload(Map<String, dynamic> data) async {
+    try {
       final chatId = data['chatId'] as String;
-      final chatName = data['chatName'] as String;
+      // Null for DMs, the server only sends a chat name for groups
+      final chatName = data['chatName'] as String?;
       final username = data['username'] as String;
       final groupType = data['groupType'] as String;
-      final timestamp = data['timestamp'] as int;
+      final timestamp = data['timestamp'] is int
+          ? data['timestamp'] as int
+          : int.parse(data['timestamp'].toString());
       final imageUrl = data['imageUrl'] as String?;
 
       final count = await _incrementUnreadCount(chatId);
@@ -112,7 +190,7 @@ class PushService {
     if (pending == null) return;
 
     final unreadCount = await _getUnreadCount(chatId);
-    final chatName = pending['chatName'] as String;
+    final chatName = pending['chatName'] as String?;
     final username = pending['username'] as String;
     final groupType = pending['groupType'] as String;
     final timestamp = pending['timestamp'] as int;
@@ -126,10 +204,10 @@ class PushService {
     final t = await (locale == 'de' ? AppLocale.de : AppLocale.en).build();
 
     if (groupType == 'group') {
-      title = chatName;
+      title = chatName ?? username;
       body = t.notifications.newMessageGroup(
         count: unreadCount,
-        chatName: chatName,
+        chatName: title,
       );
     } else {
       title = username;
@@ -225,7 +303,7 @@ class PushService {
 
   Future<void> _storePendingNotification(
     String chatId,
-    String chatName,
+    String? chatName,
     String username,
     String groupType,
     int timestamp,

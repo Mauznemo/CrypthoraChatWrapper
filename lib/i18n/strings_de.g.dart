@@ -89,6 +89,9 @@ class _Translations$serverSettings$de implements Translations$serverSettings$en 
 	@override String get serverUrl => 'Server-URL';
 	@override String get setServer => 'Server festlegen';
 	@override String get pushProvider => 'Push-Anbieter';
+	@override String get pushProviderFcm => 'Firebase (Google FCM)';
+	@override String get checkingServer => 'Server wird geprüft...';
+	@override String get fcmUnavailable => 'Auf diesem Server ist kein Firebase eingerichtet, daher sind nur ntfy-Anbieter verfügbar.';
 }
 
 // Path: notifications.service
@@ -131,6 +134,9 @@ extension on TranslationsDe {
 			'serverSettings.serverUrl' => 'Server-URL',
 			'serverSettings.setServer' => 'Server festlegen',
 			'serverSettings.pushProvider' => 'Push-Anbieter',
+			'serverSettings.pushProviderFcm' => 'Firebase (Google FCM)',
+			'serverSettings.checkingServer' => 'Server wird geprüft...',
+			'serverSettings.fcmUnavailable' => 'Auf diesem Server ist kein Firebase eingerichtet, daher sind nur ntfy-Anbieter verfügbar.',
 			_ => null,
 		};
 	}

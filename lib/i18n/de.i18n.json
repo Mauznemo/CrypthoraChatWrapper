@@ -24,6 +24,9 @@
     "notificationServerUrl": "URL des Benachrichtigungsservers",
     "serverUrl": "Server-URL",
     "setServer": "Server festlegen",
-    "pushProvider": "Push-Anbieter"
+    "pushProvider": "Push-Anbieter",
+    "pushProviderFcm": "Firebase (Google FCM)",
+    "checkingServer": "Server wird geprüft...",
+    "fcmUnavailable": "Auf diesem Server ist kein Firebase eingerichtet, daher sind nur ntfy-Anbieter verfügbar."
   }
 }

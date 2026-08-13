@@ -1,0 +1,29 @@
+{
+  "notifications": {
+    "newMessageDm": "$count neue Nachrichten von $username",
+    "newMessageGroup": "$count neue Nachrichten in $chatName",
+    "service": {
+      "connected": "Verbunden",
+      "receiving": "Empfangen von Echtzeit-Benachrichtigungen",
+      "disconnected": "Getrennt",
+      "tryingToReconnect": "Versuche, die Verbindung wiederherzustellen...",
+      "starting": "Wird gestartet",
+      "startingText": "Benachrichtigungsdienst wird gestartet"
+    }
+  },
+  "app": {
+    "changeServer": "Serveradresse ändern",
+    "failedToLoadWebview": "Webview konnte nicht geladen werden",
+    "loadingWebview": "Webview wird geladen...",
+    "retry": "Wiederholen"
+  },
+  "common": {
+    "save": "Speichern"
+  },
+  "serverSettings": {
+    "notificationServerUrl": "URL des Benachrichtigungsservers",
+    "serverUrl": "Server-URL",
+    "setServer": "Server festlegen",
+    "pushProvider": "Push-Anbieter"
+  }
+}

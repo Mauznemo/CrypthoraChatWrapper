@@ -1,9 +1,9 @@
 import 'package:crypthora_chat_wrapper/components/custom_dropdown_button.dart';
 import 'package:crypthora_chat_wrapper/components/custom_text_form_field.dart';
+import 'package:crypthora_chat_wrapper/i18n/strings.g.dart';
 import 'package:crypthora_chat_wrapper/pages/chat_page.dart';
 import 'package:crypthora_chat_wrapper/services/push_service.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_i18n/flutter_i18n.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:unifiedpush/unifiedpush.dart';
 
@@ -46,9 +46,7 @@ class _AddServerPageState extends State<AddServerPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          FlutterI18n.translate(context, 'server-settings.set-server'),
-        ),
+        title: Text(context.t.serverSettings.setServer),
         leading: widget.canGoBack
             ? IconButton(
                 onPressed: () {
@@ -65,20 +63,13 @@ class _AddServerPageState extends State<AddServerPage> {
             children: [
               Align(
                 alignment: Alignment.topLeft,
-                child: Text(
-                  FlutterI18n.translate(context, 'server-settings.server-url'),
-                ),
+                child: Text(context.t.serverSettings.serverUrl),
               ),
               CustomTextFormField(controller: _serverUrlController),
               const SizedBox(height: 16),
               Align(
                 alignment: Alignment.topLeft,
-                child: Text(
-                  FlutterI18n.translate(
-                    context,
-                    'server-settings.push-provider',
-                  ),
-                ),
+                child: Text(context.t.serverSettings.pushProvider),
               ),
               CustomDropdownButton(
                 value: _pushProvider,
@@ -126,7 +117,7 @@ class _AddServerPageState extends State<AddServerPage> {
                     );
                   }
                 },
-                child: Text(FlutterI18n.translate(context, 'common.save')),
+                child: Text(context.t.common.save),
               ),
             ],
           ),

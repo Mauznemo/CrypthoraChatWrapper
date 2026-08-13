@@ -1,7 +1,7 @@
 import 'dart:convert';
 
+import 'package:crypthora_chat_wrapper/i18n/strings.g.dart';
 import 'package:crypthora_chat_wrapper/utils/disk_logger.dart';
-import 'package:crypthora_chat_wrapper/utils/i18n_helper.dart';
 import 'package:crypthora_chat_wrapper/utils/utils.dart';
 import 'package:crypthora_chat_wrapper/utils/image_cache.dart';
 import 'package:flutter/material.dart' hide ImageCache;
@@ -106,16 +106,6 @@ class PushService {
     });
   }
 
-  final Map<String, dynamic> _translationsEn = {
-    "new-message-group": "{count} new messages in {chatName}",
-    "new-message-dm": "{count} new messages from {username}",
-  };
-
-  final Map<String, dynamic> _translationsDe = {
-    "new-message-dm": "{count} neue Nachrichten von {username}",
-    "new-message-group": "{count} neue Nachrichten in {chatName}",
-  };
-
   Future<void> _showPendingNotification(String chatId) async {
     final pending = await _getPendingNotification(chatId);
 
@@ -133,23 +123,20 @@ class PushService {
 
     final prefs = await SharedPreferences.getInstance();
     final locale = prefs.getString('locale');
-    I18nHelper.load(
-      locale ?? 'en',
-      locale == 'de' ? _translationsDe : _translationsEn,
-    );
+    final t = await (locale == 'de' ? AppLocale.de : AppLocale.en).build();
 
     if (groupType == 'group') {
       title = chatName;
-      body = I18nHelper.t('new-message-group', {
-        'count': unreadCount.toString(),
-        'chatName': chatName,
-      });
+      body = t.notifications.newMessageGroup(
+        count: unreadCount,
+        chatName: chatName,
+      );
     } else {
       title = username;
-      body = I18nHelper.t('new-message-dm', {
-        'count': unreadCount.toString(),
-        'username': username,
-      });
+      body = t.notifications.newMessageDm(
+        count: unreadCount,
+        username: username,
+      );
     }
 
     await _showNotification(

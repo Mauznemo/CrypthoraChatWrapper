@@ -1,7 +1,9 @@
 # Project
 The wrapper Flutter (Android) app for an open-source self-hostable E2EE chat app for friends and family.
 
-- flutter_i18n for localization, strings in lib/i18n/{en,de}.i18n.json (English is the base locale)
+- slang for localization, strings in lib/i18n/{en,de}.i18n.json (English is the base locale)
+    - Keys are camelCase, placeholders use `$var` (or `${var}` when followed by a word char)
+    - After editing the JSON run `dart run slang` to regenerate lib/i18n/strings.g.dart
 - Custom reusable widgets in lib/widgets/, widgets that are unique to a page they are in a sub dir with that pages name
 - For new pages try using a similar code structure (mainly for the UI code) to the existing ones that might be similar, they should also visually match
 - When defining widgets or classes put all the vars on top of the constructor not the other way around

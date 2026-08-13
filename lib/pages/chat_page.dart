@@ -2,12 +2,11 @@ import 'dart:async';
 import 'dart:collection';
 import 'dart:developer' as developer;
 
+import 'package:crypthora_chat_wrapper/i18n/strings.g.dart';
 import 'package:crypthora_chat_wrapper/pages/add_server_page.dart';
 import 'package:crypthora_chat_wrapper/pages/settings_page.dart';
 import 'package:crypthora_chat_wrapper/services/push_service.dart';
-import 'package:crypthora_chat_wrapper/utils/i18n_helper.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_i18n/flutter_i18n.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -80,7 +79,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
     debugPrint('[chat_page] topic: $_topic');
 
-    await I18nHelper.saveCurrentLocale(context);
+    await _prefs?.setString(
+      'locale',
+      LocaleSettings.currentLocale.languageCode,
+    );
 
     if (_serverUrl == null ||
         _serverUrl!.isEmpty ||
@@ -336,9 +338,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         CircularProgressIndicator(),
-                        Text(
-                          FlutterI18n.translate(context, 'app.loading-webview'),
-                        ),
+                        Text(context.t.app.loadingWebview),
                       ],
                     ),
                   ),
@@ -351,10 +351,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Text(
-                    FlutterI18n.translate(
-                      context,
-                      'app.failed-to-load-webview',
-                    ),
+                    context.t.app.failedToLoadWebview,
                     style: TextStyle(fontSize: 24),
                   ),
                   const SizedBox(height: 16),
@@ -369,7 +366,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                         MaterialPageRoute(builder: (context) => ChatPage()),
                       );
                     },
-                    child: Text(FlutterI18n.translate(context, 'app.retry')),
+                    child: Text(context.t.app.retry),
                   ),
                   const SizedBox(height: 5),
                   FilledButton(
@@ -381,9 +378,7 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                         ),
                       );
                     },
-                    child: Text(
-                      FlutterI18n.translate(context, 'app.change-server'),
-                    ),
+                    child: Text(context.t.app.changeServer),
                   ),
                 ],
               ),

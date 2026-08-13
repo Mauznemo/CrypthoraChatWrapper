@@ -22,7 +22,8 @@ dependencies:
   shared_preferences: ^2.5.3
   flutter_inappwebview: ^6.1.5
   permission_handler: ^12.0.1
-  flutter_i18n: ^0.36.3
+  slang: ^4.19.0
+  slang_flutter: ^4.19.0
   package_info_plus: ^9.0.0
   url_launcher: ^6.3.2
   unifiedpush: ^6.2.0
@@ -41,7 +42,6 @@ flutter:
   uses-material-design: true
   assets:
     - assets/
-    - assets/i18n/
 
 flutter_launcher_icons:
   android: "launcher_icon"

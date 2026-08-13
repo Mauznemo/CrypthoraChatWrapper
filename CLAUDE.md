@@ -1,0 +1,18 @@
+# Project
+The wrapper Flutter (Android) app for an open-source self-hostable E2EE chat app for friends and family.
+
+- flutter_i18n for localization, strings in lib/i18n/{en,de}.i18n.json (English is the base locale)
+- Custom reusable widgets in lib/widgets/, widgets that are unique to a page they are in a sub dir with that pages name
+- For new pages try using a similar code structure (mainly for the UI code) to the existing ones that might be similar, they should also visually match
+- When defining widgets or classes put all the vars on top of the constructor not the other way around
+- Rest of structure:
+    - utils in lib/utils
+    - services in lib/services
+    - helpers in lib/helpers
+    - freezed (add if needed) models in lib/models
+    - modals or sheets in lib/modals
+    - Some more used only rarely: lib/animations, lib/camera, lib/config, lib/styles
+- The App is not in production yet so saved data can break
+- If at any point a DB is needed it will be objectbox with all models in lib/src/models
+- When defining widgets or classes put all the vars on top of the constructor and not the other way around.
+   Update this or other CLAUDE.mds if the info in here changes or something new is worth adding if it will be needed for **every** later session. Do **not** clutter it with one of info or things that are just common sense or easy to figure out without having it here. If you think something one off needs explaining the dart docs with `///` is the right place, not this file.

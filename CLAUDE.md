@@ -15,6 +15,7 @@ The wrapper Flutter (Android) app for an open-source self-hostable E2EE chat app
     - modals or sheets in lib/modals
     - Some more used only rarely: lib/animations, lib/camera, lib/config, lib/styles
 - The App is not in production yet so saved data can break
+- Releases are cut with `./scripts/release.sh`, which tags and pushes; GitHub Actions builds and publishes. `version:` in pubspec.yaml is the source of truth, its `+n` build number is ignored (CI derives the versionCode). Changelogs come from `feat:`/`fix:`/`refactor:` commit subjects, so keep writing them that way.
 - If at any point a DB is needed it will be objectbox with all models in lib/src/models
 - When defining widgets or classes put all the vars on top of the constructor and not the other way around.
    Update this or other CLAUDE.mds if the info in here changes or something new is worth adding if it will be needed for **every** later session. Do **not** clutter it with one of info or things that are just common sense or easy to figure out without having it here. If you think something one off needs explaining the dart docs with `///` is the right place, not this file.

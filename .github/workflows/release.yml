@@ -60,11 +60,16 @@ jobs:
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "code=$(version_code "$version")" >> "$GITHUB_OUTPUT"
-          # Anything with a `-alpha.N` / `-beta.N` / `-rc.N` suffix is a pre-release.
-          case $version in
-            *-*) echo "prerelease=true" >> "$GITHUB_OUTPUT" ;;
-            *) echo "prerelease=false" >> "$GITHUB_OUTPUT" ;;
-          esac
+          # TODO: re-enable pre-release marking once there are stable versions to tell apart.
+          # Everything is an alpha right now, so marking them all as pre-releases would leave
+          # the repo with no "latest" release for people to download. Uncomment this and the
+          # matching --prerelease line in the "Publish release" step below to turn it back on:
+          # anything with a `-alpha.N` / `-beta.N` / `-rc.N` suffix becomes a pre-release.
+          #
+          # case $version in
+          #   *-*) echo "prerelease=true" >> "$GITHUB_OUTPUT" ;;
+          #   *) echo "prerelease=false" >> "$GITHUB_OUTPUT" ;;
+          # esac
 
       - name: Restore signing keystore
         env:
@@ -128,11 +133,17 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          # TODO: re-enable pre-release marking together with the commented-out block in the
+          # "Resolve version" step. Add a trailing backslash to the --notes-file line and
+          # restore the last line below, which expands to --prerelease when the version has a
+          # -alpha.N / -beta.N / -rc.N suffix and to nothing otherwise.
+          #
+          #   $-{{ steps.version.outputs.prerelease == 'true' && '--prerelease' || '' }}
+          #   (remove the dash after the $ -- it is only there to stop Actions expanding this)
           gh release create "${{ steps.version.outputs.tag }}" \
             "dist/CrypthoraChatWrapper-${{ steps.version.outputs.tag }}.apk" \
             --title "${{ steps.version.outputs.tag }}" \
-            --notes-file notes.md \
-            ${{ steps.version.outputs.prerelease == 'true' && '--prerelease' || '' }}
+            --notes-file notes.md
 
       - name: Upload apk as artifact (dry run)
         if: github.event_name != 'push'

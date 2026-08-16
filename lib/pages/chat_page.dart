@@ -1,25 +1,28 @@
 import 'dart:async';
 import 'dart:collection';
+import 'dart:convert';
 import 'dart:developer' as developer;
 
 import 'package:crypthora_chat_wrapper/i18n/strings.g.dart';
 import 'package:crypthora_chat_wrapper/pages/add_server_page.dart';
 import 'package:crypthora_chat_wrapper/pages/settings_page.dart';
 import 'package:crypthora_chat_wrapper/services/fcm_service.dart';
+import 'package:crypthora_chat_wrapper/services/pending_chat_service.dart';
 import 'package:crypthora_chat_wrapper/services/push_service.dart';
+import 'package:crypthora_chat_wrapper/services/shortcut_service.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:flutter/services.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:person_shortcut_creator/person_shortcut_creator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class ChatPage extends StatefulWidget {
-  final String? chatId;
-  const ChatPage({super.key, this.chatId});
+  const ChatPage({super.key});
   @override
   _ChatPageState createState() => _ChatPageState();
 }
@@ -36,6 +39,11 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   String? _fcmToken;
   bool _usesFcm = false;
   StreamSubscription<String>? _tokenRefreshSub;
+  StreamSubscription<PendingChat>? _pendingChatSub;
+  StreamSubscription<ShortcutLaunch>? _shortcutSub;
+
+  /// A chat to open that arrived before the page was ready to be told about it.
+  PendingChat? _pendingChat;
 
   InAppWebViewSettings get _webViewSettings => InAppWebViewSettings(
     useHybridComposition: true,
@@ -59,19 +67,11 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   );
 
   Uri? _serverUri;
-  final FlutterLocalNotificationsPlugin _notifications =
-      FlutterLocalNotificationsPlugin();
 
   void _init() async {
-    final NotificationAppLaunchDetails? launchDetails = await _notifications
-        .getNotificationAppLaunchDetails();
-
     _prefs = await SharedPreferences.getInstance();
 
     _packageInfo = await PackageInfo.fromPlatform();
-
-    PushService.clearUnreadCounts();
-    PushService.clearAllNotifications();
 
     _serverUrl = _prefs?.getString('server_url');
 
@@ -79,9 +79,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
 
     await _loadPushToken();
 
-    // The registration is async and may not have landed yet on a fresh install
-    if (!_isPushRegistered) {
-      await Future.delayed(const Duration(seconds: 5));
+    // The registration is async and may not have landed yet on a fresh install. Polling instead of
+    // sleeping the full timeout keeps the usual launch instant.
+    for (var i = 0; i < 20 && !_isPushRegistered; i++) {
+      await Future.delayed(const Duration(milliseconds: 250));
       await _prefs?.reload();
       await _loadPushToken();
     }
@@ -92,6 +93,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       'locale',
       LocaleSettings.currentLocale.languageCode,
     );
+
+    if (!mounted) return;
 
     if (_serverUrl == null || _serverUrl!.isEmpty || !_isPushRegistered) {
       Navigator.pushReplacement(
@@ -107,21 +110,11 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
       await Permission.notification.request();
     }
 
-    String? chatId;
+    // Whatever this launch was for, worked out once in main().
+    _pendingChat = PendingChatService.take();
+    _serverUri = _getChatUri(_pendingChat?.chatId);
 
-    if (launchDetails?.didNotificationLaunchApp == true) {
-      final String? payload = launchDetails!.notificationResponse?.payload;
-      if (payload != null && payload.isNotEmpty) {
-        debugPrint(
-          '[chat_page] Init: App launched from notification with payload: $payload',
-        );
-
-        chatId = payload;
-      }
-    }
-
-    _serverUri = _getChatUri(chatId);
-
+    if (!mounted) return;
     setState(() {
       isReady = true;
     });
@@ -160,7 +153,64 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     super.initState();
     _init();
     _listenForTokenRefresh();
+    _listenForPendingChats();
     WidgetsBinding.instance.addObserver(this);
+  }
+
+  /// Person shortcut taps and shares that land while the app is already running.
+  void _listenForPendingChats() {
+    _shortcutSub = PersonShortcutCreator.launches.listen((launch) {
+      PendingChatService.offer(
+        PendingChat(
+          chatId: launch.shortcutId,
+          sharedText: launch.sharedText,
+          source: launch.sharedText != null
+              ? PendingChatSource.share
+              : PendingChatSource.shortcut,
+        ),
+      );
+    });
+
+    _pendingChatSub = PendingChatService.stream.listen((_) {
+      final pending = PendingChatService.take();
+      if (pending == null) return;
+
+      if (controller == null || !isReady) {
+        _pendingChat = pending;
+        return;
+      }
+      _deliverPendingChat(pending);
+    });
+  }
+
+  /// Hands the web app the chat it should open, and any text that was shared to it.
+  ///
+  /// Both halves are set as globals as well as called directly: the page may still be mounting
+  /// when this runs, in which case the web app picks the globals up once it connects.
+  Future<void> _deliverPendingChat(PendingChat pending) async {
+    debugPrint('[chat_page] Delivering $pending');
+    final chatId = jsonEncode(pending.chatId);
+    final sharedText = jsonEncode(pending.sharedText);
+
+    await controller?.evaluateJavascript(
+      source:
+          '''
+      (function () {
+        var chatId = $chatId;
+        var sharedText = $sharedText;
+        window.__pendingChatId = chatId;
+        window.__pendingSharedText = sharedText;
+        if (sharedText != null && window.shareToChat) {
+          window.shareToChat(chatId, sharedText);
+          window.__pendingChatId = null;
+          window.__pendingSharedText = null;
+        } else if (chatId != null && window.goToChat) {
+          window.goToChat(chatId);
+          window.__pendingChatId = null;
+        }
+      })();
+    ''',
+    );
   }
 
   /// FCM tokens rotate, the web app has to re-register the new one with the server.
@@ -190,6 +240,8 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   @override
   void dispose() {
     _tokenRefreshSub?.cancel();
+    _pendingChatSub?.cancel();
+    _shortcutSub?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -207,29 +259,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
         );
         break;
       case AppLifecycleState.resumed:
-        PushService.clearUnreadCounts();
-        PushService.clearAllNotifications();
-
-        final NotificationAppLaunchDetails? launchDetails = await _notifications
-            .getNotificationAppLaunchDetails();
-
-        if (launchDetails?.didNotificationLaunchApp == true) {
-          final String? payload = launchDetails!.notificationResponse?.payload;
-          if (payload != null && payload.isNotEmpty) {
-            debugPrint(
-              '[chat_page] AppLifecycleState.resumed: App launched from notification with payload: $payload',
-            );
-            await controller?.evaluateJavascript(
-              source:
-                  """
-          if (window.goToChat) {
-            window.goToChat('$payload');
-          }
-        """,
-            );
-          }
-        }
-
+        // Nothing about notifications is read here on purpose. Unread counts are cleared per chat
+        // by the web app's `chatOpened` call, so resuming into chat A no longer wipes chat B's
+        // count, and nothing re-reads the launch intent to replay an old chat.
         await controller?.evaluateJavascript(
           source: """
       if (window.setSocketActive) {
@@ -276,165 +308,244 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     );
   }
 
-  bool _isAppUrl(String url) {
-    String? serverUrl = _prefs?.getString('server_url') ?? 'http';
-    return url.startsWith(serverUrl);
+  /// Whether a URL belongs to the configured server.
+  ///
+  /// Compared by origin rather than by prefix, so a trailing slash or a path that merely starts
+  /// with the server URL cannot be mistaken for an external link.
+  bool _isAppUrl(Uri url) {
+    final server = _serverUri;
+    if (server == null) return false;
+    return url.scheme == server.scheme &&
+        url.host == server.host &&
+        url.port == server.port;
+  }
+
+  void _registerJavaScriptHandlers() {
+    controller?.addJavaScriptHandler(
+      handlerName: 'openSettings',
+      callback: (args) async {
+        if (!mounted) return;
+        // A push, not a pushReplacement: the WebView stays alive underneath, so coming back does
+        // not reload the whole web app.
+        Navigator.push(
+          context,
+          MaterialPageRoute(builder: (context) => SettingsPage()),
+        );
+      },
+    );
+
+    controller?.addJavaScriptHandler(
+      handlerName: 'openUrl',
+      callback: (args) async {
+        final String url = args[0];
+        debugPrint('[chat_page] Launching URL: $url');
+        await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+      },
+    );
+
+    // The web app owns the chat list, so it is the only thing that can keep the person shortcuts
+    // (launcher search, share sheet, conversation notifications) up to date.
+    controller?.addJavaScriptHandler(
+      handlerName: 'syncShortcuts',
+      callback: (args) async {
+        if (args.isEmpty || args.first is! List) return;
+        await ShortcutService.sync(args.first as List);
+      },
+    );
+
+    // Sent when a chat is actually on screen, which is the only moment its messages count as seen.
+    controller?.addJavaScriptHandler(
+      handlerName: 'chatOpened',
+      callback: (args) async {
+        final chatId = args.isEmpty ? null : args.first as String?;
+        if (chatId == null || chatId.isEmpty) return;
+        debugPrint('[chat_page] Chat opened: $chatId');
+        await PushService().clearUnreadCount(chatId);
+        await ShortcutService.reportUsed(chatId);
+      },
+    );
+  }
+
+  Future<void> _handleBack() async {
+    // Back inside the web app first, so it does not exit the app from a sub page and force a cold
+    // start (which reads as "the app reloaded itself") on the next launch.
+    if (await controller?.canGoBack() ?? false) {
+      await controller?.goBack();
+      return;
+    }
+    // Leaves the app, same as before. Navigator.maybePop would re-enter this callback, since the
+    // PopScope above already refused the pop.
+    await SystemNavigator.pop();
   }
 
   @override
   Widget build(BuildContext context) {
-    return !_loadError
-        ? Scaffold(
-            body: isReady
-                ? InAppWebView(
-                    initialUrlRequest: URLRequest(
-                      url: WebUri(_serverUri.toString()),
-                    ),
-                    initialSettings: _webViewSettings,
-                    onWebViewCreated: (InAppWebViewController webController) {
-                      controller = webController;
-                      controller?.addJavaScriptHandler(
-                        handlerName: 'openSettings',
-                        callback: (args) async {
-                          Navigator.pushReplacement(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => SettingsPage(),
-                            ),
-                          );
-                        },
-                      );
-
-                      controller?.addJavaScriptHandler(
-                        handlerName: 'openUrl',
-                        callback: (args) async {
-                          final String url = args[0];
-                          debugPrint('[chat_page] Launching URL: $url');
-                          await launchUrl(
-                            Uri.parse(url),
-                            mode: LaunchMode.externalApplication,
-                          );
-                        },
-                      );
-                    },
-                    initialUserScripts: UnmodifiableListView<UserScript>([
-                      // Set before the page runs, it registers for push on mount
-                      UserScript(
-                        source:
-                            """
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        _handleBack();
+      },
+      child: Scaffold(
+        resizeToAvoidBottomInset: true,
+        body: isReady
+            ? Stack(
+                children: [
+                  InAppWebView(
+                      initialUrlRequest: URLRequest(
+                        url: WebUri(_serverUri.toString()),
+                      ),
+                      initialSettings: _webViewSettings,
+                      onWebViewCreated: (InAppWebViewController webController) {
+                        controller = webController;
+                        _registerJavaScriptHandlers();
+                      },
+                      initialUserScripts: UnmodifiableListView<UserScript>([
+                        // Set before the page runs, it registers for push on mount
+                        UserScript(
+                          source:
+                              """
                                 window.isFlutterWebView = true;
                                 $_pushGlobals
                           """,
-                        injectionTime:
-                            UserScriptInjectionTime.AT_DOCUMENT_START,
-                      ),
-                    ]),
-                    onUpdateVisitedHistory: (controller, url, isReload) async {
-                      if (url != null && !_isAppUrl(url.toString())) {
-                        controller.goBack();
-                        debugPrint(
-                          '[chat_page] Launching URL (fallback on navigate): $url',
-                        );
-                        await launchUrl(
-                          url,
-                          mode: LaunchMode.externalApplication,
-                        );
-                      }
-                    },
-                    onLoadStop:
-                        (InAppWebViewController webController, WebUri? url) {
-                          if (_isPushRegistered) {
-                            _injectFlutterInfo();
-                          } else {
-                            developer.log(
-                              'Missing push token, not injecting',
-                              name: 'chat_page',
-                            );
-                          }
-                        },
-                    onReceivedError: (controller, request, error) => {
-                      setState(() {
-                        _loadError = true;
-                        _errorMessage = error.description;
-                      }),
-                    },
-                    shouldOverrideUrlLoading:
-                        (controller, navigationAction) async {
-                          return NavigationActionPolicy.ALLOW;
-                        },
-                    onPermissionRequest: (controller, permissionRequest) async {
-                      developer.log(
-                        'Permission request: ${permissionRequest.resources}',
-                      );
+                          injectionTime:
+                              UserScriptInjectionTime.AT_DOCUMENT_START,
+                        ),
+                      ]),
+                      onLoadStart: (controller, url) {
+                        if (!_loadError) return;
+                        setState(() => _loadError = false);
+                      },
+                      onLoadStop:
+                          (InAppWebViewController webController, WebUri? url) async {
+                            if (!_isPushRegistered) {
+                              developer.log(
+                                'Missing push token, not injecting',
+                                name: 'chat_page',
+                              );
+                              return;
+                            }
+                            await _injectFlutterInfo();
 
-                      if (permissionRequest.resources.contains(
-                        PermissionResourceType.CAMERA,
-                      )) {
-                        final status = await Permission.camera.request();
+                            final pending = _pendingChat;
+                            if (pending != null) {
+                              _pendingChat = null;
+                              await _deliverPendingChat(pending);
+                            }
+                          },
+                      onReceivedError: (controller, request, error) {
+                        // Fires for subresources too. Without this a single failed avatar or icon
+                        // request replaced the whole session with the error screen.
+                        if (request.isForMainFrame != true) return;
+                        if (error.type == WebResourceErrorType.CANCELLED) return;
+                        setState(() {
+                          _loadError = true;
+                          _errorMessage = error.description;
+                        });
+                      },
+                      shouldOverrideUrlLoading:
+                          (controller, navigationAction) async {
+                            final url = navigationAction.request.url;
+                            if (url == null) {
+                              return NavigationActionPolicy.ALLOW;
+                            }
+                            // about:/blob:/data: are the web app's own machinery, never links out.
+                            if (!url.scheme.startsWith('http')) {
+                              return NavigationActionPolicy.ALLOW;
+                            }
+                            if (_isAppUrl(url) ||
+                                navigationAction.isForMainFrame != true) {
+                              return NavigationActionPolicy.ALLOW;
+                            }
+
+                            debugPrint('[chat_page] Launching URL: $url');
+                            await launchUrl(
+                              url,
+                              mode: LaunchMode.externalApplication,
+                            );
+                            return NavigationActionPolicy.CANCEL;
+                          },
+                      onPermissionRequest: (controller, permissionRequest) async {
+                        developer.log(
+                          'Permission request: ${permissionRequest.resources}',
+                        );
+
+                        if (permissionRequest.resources.contains(
+                          PermissionResourceType.CAMERA,
+                        )) {
+                          final status = await Permission.camera.request();
+                          return PermissionResponse(
+                            resources: permissionRequest.resources,
+                            action: status == PermissionStatus.granted
+                                ? PermissionResponseAction.GRANT
+                                : PermissionResponseAction.DENY,
+                          );
+                        }
+
                         return PermissionResponse(
                           resources: permissionRequest.resources,
-                          action: status == PermissionStatus.granted
-                              ? PermissionResponseAction.GRANT
-                              : PermissionResponseAction.DENY,
+                          action: PermissionResponseAction.DENY,
                         );
-                      }
-
-                      return PermissionResponse(
-                        resources: permissionRequest.resources,
-                        action: PermissionResponseAction.DENY,
-                      );
-                    },
-                  )
-                : Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        CircularProgressIndicator(),
-                        Text(context.t.app.loadingWebview),
-                      ],
-                    ),
+                      },
                   ),
-          )
-        : Scaffold(
-            resizeToAvoidBottomInset: true,
-            appBar: AppBar(title: Text('CrypthoraChat Wrapper')),
-            body: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Text(
-                    context.t.app.failedToLoadWebview,
-                    style: TextStyle(fontSize: 24),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(_errorMessage, style: TextStyle(fontSize: 16)),
-                  const SizedBox(height: 5),
-                  Text('Server: $_serverUri', style: TextStyle(fontSize: 16)),
-                  const SizedBox(height: 56),
-                  FilledButton(
-                    onPressed: () {
-                      Navigator.pushReplacement(
-                        context,
-                        MaterialPageRoute(builder: (context) => ChatPage()),
-                      );
-                    },
-                    child: Text(context.t.app.retry),
-                  ),
-                  const SizedBox(height: 5),
-                  FilledButton(
-                    onPressed: () {
-                      Navigator.pushReplacement(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => AddServerPage(canGoBack: true),
-                        ),
-                      );
-                    },
-                    child: Text(context.t.app.changeServer),
-                  ),
+                  // Laid over the WebView rather than replacing it, so retrying is a reload of the
+                  // existing session instead of a fresh page load.
+                  if (_loadError) Positioned.fill(child: _buildErrorView()),
                 ],
+              )
+            : Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    CircularProgressIndicator(),
+                    Text(context.t.app.loadingWebview),
+                  ],
+                ),
               ),
-            ),
-          );
+      ),
+    );
+  }
+
+  Widget _buildErrorView() {
+    return ColoredBox(
+      color: Theme.of(context).colorScheme.surface,
+      child: SafeArea(
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text(
+                context.t.app.failedToLoadWebview,
+                style: TextStyle(fontSize: 24),
+              ),
+              const SizedBox(height: 16),
+              Text(_errorMessage, style: TextStyle(fontSize: 16)),
+              const SizedBox(height: 5),
+              Text('Server: $_serverUri', style: TextStyle(fontSize: 16)),
+              const SizedBox(height: 56),
+              FilledButton(
+                onPressed: () {
+                  setState(() => _loadError = false);
+                  controller?.reload();
+                },
+                child: Text(context.t.app.retry),
+              ),
+              const SizedBox(height: 5),
+              FilledButton(
+                onPressed: () {
+                  Navigator.pushReplacement(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => AddServerPage(canGoBack: true),
+                    ),
+                  );
+                },
+                child: Text(context.t.app.changeServer),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }

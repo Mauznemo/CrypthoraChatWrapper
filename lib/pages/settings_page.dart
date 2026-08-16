@@ -1,5 +1,4 @@
 import 'package:crypthora_chat_wrapper/pages/add_server_page.dart';
-import 'package:crypthora_chat_wrapper/pages/chat_page.dart';
 import 'package:crypthora_chat_wrapper/pages/log_viewer_page.dart';
 import 'package:flutter/material.dart';
 
@@ -11,13 +10,10 @@ class SettingsPage extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Settings'),
+        // Pops back to the still-alive ChatPage. Pushing a new one here used to recreate the
+        // WebView, so opening settings and going back reloaded the whole web app.
         leading: IconButton(
-          onPressed: () {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (context) => ChatPage()),
-            );
-          },
+          onPressed: () => Navigator.pop(context),
           icon: const Icon(Icons.arrow_back),
         ),
       ),

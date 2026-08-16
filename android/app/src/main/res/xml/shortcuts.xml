@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Declares the app as a direct share target, which is what puts the conversation shortcuts into the
+  share sheet. The category has to match the one ShortcutService passes when it publishes them
+  (ShortcutService.shareTargetCategory) or nothing shows up.
+-->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <share-target android:targetClass="dev.mauznemo.crypthora_chat_wrapper.MainActivity">
+        <data android:mimeType="text/plain" />
+        <category android:name="dev.mauznemo.crypthora_chat_wrapper.category.SHARE_TARGET" />
+    </share-target>
+</shortcuts>

@@ -2,6 +2,9 @@
   "notifications": {
     "newMessageGroup": "$count new messages in $chatName",
     "newMessageDm": "$count new messages from $username",
+    "you": "You",
+    "channelName": "Messages",
+    "channelDescription": "New message notifications",
     "service": {
       "connected": "Connected",
       "disconnected": "Disconnected",

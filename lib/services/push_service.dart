@@ -3,13 +3,14 @@ import 'dart:convert';
 
 import 'package:crypthora_chat_wrapper/i18n/strings.g.dart';
 import 'package:crypthora_chat_wrapper/services/fcm_service.dart';
+import 'package:crypthora_chat_wrapper/services/shortcut_service.dart';
+import 'package:crypthora_chat_wrapper/utils/avatar_cache.dart';
 import 'package:crypthora_chat_wrapper/utils/disk_logger.dart';
 import 'package:crypthora_chat_wrapper/utils/utils.dart';
-import 'package:crypthora_chat_wrapper/utils/image_cache.dart';
+import 'package:crypto/crypto.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:flutter/material.dart' hide ImageCache;
+import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:person_shortcut_creator/person_shortcut_creator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:unifiedpush/unifiedpush.dart';
 
@@ -53,6 +54,15 @@ class PushService {
       FlutterLocalNotificationsPlugin();
   static final _instance = 'crypthora_chat';
   static StreamSubscription<RemoteMessage>? _fcmSub;
+
+  static const channelId = 'realtime_channel';
+
+  /// Notification bookkeeping is written from the push isolate and read from the UI isolate.
+  ///
+  /// [SharedPreferences] hands each isolate its own cached snapshot of the whole store, so the UI
+  /// isolate clearing a count stayed invisible to the push isolate, which then incremented from a
+  /// stale value and wrote the inflated map back. This API does no caching.
+  static final _state = SharedPreferencesAsync();
 
   /// Sets up only the transport the user selected.
   Future<void> init() async {
@@ -195,94 +205,93 @@ class PushService {
     final groupType = pending['groupType'] as String;
     final timestamp = pending['timestamp'] as int;
     final imageUrl = pending['imageUrl'] as String?;
-
-    String title;
-    String body;
+    final isGroup = groupType == 'group';
 
     final prefs = await SharedPreferences.getInstance();
+    // Written by the UI isolate, so this isolate's snapshot can predate it.
+    await prefs.reload();
     final locale = prefs.getString('locale');
     final t = await (locale == 'de' ? AppLocale.de : AppLocale.en).build();
 
-    if (groupType == 'group') {
-      title = chatName ?? username;
-      body = t.notifications.newMessageGroup(
-        count: unreadCount,
-        chatName: title,
-      );
-    } else {
-      title = username;
-      body = t.notifications.newMessageDm(
-        count: unreadCount,
-        username: username,
-      );
-    }
+    final title = isGroup ? (chatName ?? username) : username;
+    final body = isGroup
+        ? t.notifications.newMessageGroup(count: unreadCount, chatName: title)
+        : t.notifications.newMessageDm(count: unreadCount, username: username);
 
     await _showNotification(
-      title,
-      body,
-      chatId,
-      timestamp,
-      chatId.hashCode,
-      groupType == 'group',
-      imageUrl,
+      title: title,
+      body: body,
+      senderName: username,
+      chatId: chatId,
+      timestamp: timestamp,
+      unreadCount: unreadCount,
+      isGroup: isGroup,
+      imageUrl: imageUrl,
+      t: t,
     );
     await _clearPendingNotification(chatId);
   }
 
-  Future<void> _showNotification(
-    String title,
-    String body,
-    String chatId,
-    int timestamp,
-    int notificationId,
-    bool isGroup,
-    String? imageUrl,
-  ) async {
+  Future<void> _showNotification({
+    required String title,
+    required String body,
+    required String senderName,
+    required String chatId,
+    required int timestamp,
+    required int unreadCount,
+    required bool isGroup,
+    required String? imageUrl,
+    required Translations t,
+  }) async {
     debugPrint("[push_service] Notification image url $imageUrl");
-    final imageCache = ImageCache();
-    final imageBytes = await imageCache.getImage(imageUrl);
+    final imagePath = await AvatarCache().getImagePath(imageUrl);
+    DiskLogger.debug("[push_service] Notification image path $imagePath");
 
-    DiskLogger.debug(
-      "[push_service] Notification image bytes ${imageBytes?.length}",
+    // The shortcut has to exist before the notification references it, that binding is what puts
+    // the notification in the conversation section.
+    await ShortcutService.pushForChat(
+      chatId: chatId,
+      label: title,
+      imagePath: imagePath,
     );
 
-    try {
-      await PersonShortcutCreator.pushDynamicShortcut(
-        shortcutId: chatId,
-        shortLabel: title,
-        imageBytes: imageBytes,
-      );
-    } catch (e) {
-      DiskLogger.error("[push_service] Error creating shortcut: $e");
-    }
-
-    final chatPerson = Person(
-      name: title,
+    // MessagingStyle's first person is the device owner. Giving it the same person as the message
+    // sender makes Android treat the message as outgoing and drop the avatar entirely.
+    final selfPerson = Person(key: 'self', name: t.notifications.you);
+    final senderPerson = Person(
       key: chatId,
-      // icon: imageBytes != null ? ByteArrayAndroidIcon(imageBytes) : null,
+      name: senderName,
+      // Deliberately a file rather than bytes: a byte array icon is embedded in the notification's
+      // extras and parceled to the system on every update, where it competes for a 1MB budget.
+      icon: imagePath != null ? BitmapFilePathAndroidIcon(imagePath) : null,
     );
 
     final androidDetails = AndroidNotificationDetails(
-      'realtime_channel',
-      'Notifications',
-      channelDescription: 'Push notifications',
+      channelId,
+      t.notifications.channelName,
+      channelDescription: t.notifications.channelDescription,
       importance: Importance.high,
       priority: Priority.high,
       icon: 'ic_notification',
       category: AndroidNotificationCategory.message,
       when: timestamp,
+      number: unreadCount,
       shortcutId: chatId,
       styleInformation: MessagingStyleInformation(
-        chatPerson,
+        selfPerson,
+        groupConversation: isGroup,
+        conversationTitle: isGroup ? title : null,
         messages: [
           Message(
             body,
             DateTime.fromMillisecondsSinceEpoch(timestamp),
-            chatPerson,
+            senderPerson,
           ),
         ],
       ),
-      // largeIcon: imageBytes != null ? ByteArrayAndroidBitmap(imageBytes) : null,
+      // The conversation section is only reached on newer Android, and only when the shortcut
+      // survived the system's dynamic shortcut cap. This is what shows the picture everywhere else.
+      largeIcon: imagePath != null ? FilePathAndroidBitmap(imagePath) : null,
     );
 
     const iosDetails = DarwinNotificationDetails();
@@ -293,12 +302,25 @@ class PushService {
     );
 
     await _notifications.show(
-      notificationId,
+      notificationId(chatId),
       title,
       body,
       details,
       payload: chatId,
     );
+  }
+
+  /// Stable per chat, so a later push replaces the chat's notification instead of stacking.
+  ///
+  /// Derived rather than taken from [String.hashCode] because the notification is posted by the
+  /// push isolate and cancelled by the UI isolate, and the two have to agree on the id.
+  static int notificationId(String chatId) {
+    final digest = md5.convert(utf8.encode(chatId)).bytes;
+    return ((digest[0] << 24) |
+            (digest[1] << 16) |
+            (digest[2] << 8) |
+            digest[3]) &
+        0x7fffffff;
   }
 
   Future<void> _storePendingNotification(
@@ -309,9 +331,6 @@ class PushService {
     int timestamp,
     String? imageUrl,
   ) async {
-    final prefs = await SharedPreferences.getInstance();
-    final key = 'pending_notification_$chatId';
-
     final data = {
       'chatName': chatName,
       'username': username,
@@ -320,26 +339,22 @@ class PushService {
       'imageUrl': imageUrl,
     };
 
-    await prefs.setString(key, jsonEncode(data));
+    await _state.setString('pending_notification_$chatId', jsonEncode(data));
   }
 
   Future<Map<String, dynamic>?> _getPendingNotification(String chatId) async {
-    final prefs = await SharedPreferences.getInstance();
-    final key = 'pending_notification_$chatId';
-    final json = prefs.getString(key);
+    final json = await _state.getString('pending_notification_$chatId');
 
     if (json == null) return null;
     return jsonDecode(json);
   }
 
   Future<void> _clearPendingNotification(String chatId) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('pending_notification_$chatId');
+    await _state.remove('pending_notification_$chatId');
   }
 
   Future<Map<String, int>> _getUnreadCounts() async {
-    final prefs = await SharedPreferences.getInstance();
-    final json = prefs.getString('unread_counts') ?? '{}';
+    final json = await _state.getString('unread_counts') ?? '{}';
     debugPrint("[push_service] Loading unread counts: $json");
     final Map<String, dynamic> decoded = jsonDecode(json);
     return decoded.map((key, value) => MapEntry(key, value as int));
@@ -347,8 +362,7 @@ class PushService {
 
   Future<void> _saveUnreadCounts(Map<String, int> counts) async {
     debugPrint("[push_service] Saving unread counts: $counts");
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('unread_counts', jsonEncode(counts));
+    await _state.setString('unread_counts', jsonEncode(counts));
   }
 
   Future<int> _incrementUnreadCount(String chatId) async {
@@ -367,27 +381,33 @@ class PushService {
     String chatId,
     int timestamp,
   ) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt('newest_notification_timestamp_$chatId', timestamp);
+    await _state.setInt('newest_notification_timestamp_$chatId', timestamp);
   }
 
   Future<int?> _getNewestNotificationTimestamp(String chatId) async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getInt('newest_notification_timestamp_$chatId');
+    return await _state.getInt('newest_notification_timestamp_$chatId');
   }
 
+  /// Forgets everything about one chat and takes its notification down.
+  ///
+  /// Called when the user opens that chat, which is the only point at which the messages have
+  /// actually been seen. Clearing every chat instead would hide unread counts for the chats the
+  /// user did not open.
   Future<void> clearUnreadCount(String chatId) async {
     final counts = await _getUnreadCounts();
     counts.remove(chatId);
     await _saveUnreadCounts(counts);
 
     await _clearPendingNotification(chatId);
+    await _state.remove('newest_notification_timestamp_$chatId');
+    await _notifications.cancel(notificationId(chatId));
   }
 
+  /// Drops every count and notification, for when the app is pointed at a different server and
+  /// the old chats stop meaning anything.
   static Future<void> clearUnreadCounts() async {
     debugPrint("[push_service] Clearing unread counts");
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('unread_counts');
+    await _state.remove('unread_counts');
   }
 
   static Future<void> clearAllNotifications() async {

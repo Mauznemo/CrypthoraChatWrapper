@@ -5,6 +5,7 @@ import 'package:crypthora_chat_wrapper/models/fcm_config.dart';
 import 'package:crypthora_chat_wrapper/pages/chat_page.dart';
 import 'package:crypthora_chat_wrapper/services/fcm_service.dart';
 import 'package:crypthora_chat_wrapper/services/push_service.dart';
+import 'package:crypthora_chat_wrapper/services/shortcut_service.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:unifiedpush/unifiedpush.dart';
@@ -84,6 +85,11 @@ class _AddServerPageState extends State<AddServerPage> {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('server_url', _serverUrlController.text);
     await PushProvider.save(_pushProvider);
+
+    // Unread counts, notifications and person shortcuts all belong to the previous server.
+    await PushService.clearUnreadCounts();
+    await PushService.clearAllNotifications();
+    await ShortcutService.clearAll();
 
     if (_pushProvider == PushProvider.fcm) {
       // Stop any UnifiedPush registration first, a session only gets one provider

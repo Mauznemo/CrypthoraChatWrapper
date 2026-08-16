@@ -52,6 +52,9 @@ class _Translations$notifications$de implements Translations$notifications$en {
 	// Translations
 	@override String newMessageDm({required Object count, required Object username}) => '${count} neue Nachrichten von ${username}';
 	@override String newMessageGroup({required Object count, required Object chatName}) => '${count} neue Nachrichten in ${chatName}';
+	@override String get you => 'Du';
+	@override String get channelName => 'Nachrichten';
+	@override String get channelDescription => 'Benachrichtigungen über neue Nachrichten';
 	@override late final _Translations$notifications$service$de service = _Translations$notifications$service$de._(_root);
 }
 
@@ -119,6 +122,9 @@ extension on TranslationsDe {
 		return switch (path) {
 			'notifications.newMessageDm' => ({required Object count, required Object username}) => '${count} neue Nachrichten von ${username}',
 			'notifications.newMessageGroup' => ({required Object count, required Object chatName}) => '${count} neue Nachrichten in ${chatName}',
+			'notifications.you' => 'Du',
+			'notifications.channelName' => 'Nachrichten',
+			'notifications.channelDescription' => 'Benachrichtigungen über neue Nachrichten',
 			'notifications.service.connected' => 'Verbunden',
 			'notifications.service.receiving' => 'Empfangen von Echtzeit-Benachrichtigungen',
 			'notifications.service.disconnected' => 'Getrennt',

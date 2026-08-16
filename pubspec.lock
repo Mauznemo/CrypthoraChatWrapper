@@ -82,7 +82,7 @@ packages:
     source: hosted
     version: "1.19.1"
   crypto:
-    dependency: transitive
+    dependency: "direct main"
     description:
       name: crypto
       sha256: "1e445881f28f22d6140f181e07737b22f1e099a5e1ff94b0af2f9e4a463f4855"
@@ -538,10 +538,10 @@ packages:
     description:
       path: "."
       ref: HEAD
-      resolved-ref: "04cf6fbe3b0effc52eaadcc885dc1fac80123455"
+      resolved-ref: bd465cabb780bbcdcc7877179975e24c2aa310e3
       url: "https://github.com/Mauznemo/flutter_person_shortcut_creator.git"
     source: git
-    version: "0.0.1"
+    version: "0.1.0"
   petitparser:
     dependency: transitive
     description:

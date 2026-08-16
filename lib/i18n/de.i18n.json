@@ -2,6 +2,9 @@
   "notifications": {
     "newMessageDm": "$count neue Nachrichten von $username",
     "newMessageGroup": "$count neue Nachrichten in $chatName",
+    "you": "Du",
+    "channelName": "Nachrichten",
+    "channelDescription": "Benachrichtigungen über neue Nachrichten",
     "service": {
       "connected": "Verbunden",
       "receiving": "Empfangen von Echtzeit-Benachrichtigungen",

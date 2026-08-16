@@ -60,6 +60,15 @@ class Translations$notifications$en {
 	/// en: '$count new messages from $username'
 	String newMessageDm({required Object count, required Object username}) => '${count} new messages from ${username}';
 
+	/// en: 'You'
+	String get you => 'You';
+
+	/// en: 'Messages'
+	String get channelName => 'Messages';
+
+	/// en: 'New message notifications'
+	String get channelDescription => 'New message notifications';
+
 	late final Translations$notifications$service$en service = Translations$notifications$service$en._(_root);
 }
 
@@ -163,6 +172,9 @@ extension on Translations {
 		return switch (path) {
 			'notifications.newMessageGroup' => ({required Object count, required Object chatName}) => '${count} new messages in ${chatName}',
 			'notifications.newMessageDm' => ({required Object count, required Object username}) => '${count} new messages from ${username}',
+			'notifications.you' => 'You',
+			'notifications.channelName' => 'Messages',
+			'notifications.channelDescription' => 'New message notifications',
 			'notifications.service.connected' => 'Connected',
 			'notifications.service.disconnected' => 'Disconnected',
 			'notifications.service.receiving' => 'Receiving real-time notifications',

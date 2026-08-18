@@ -45,6 +45,9 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   /// A chat to open that arrived before the page was ready to be told about it.
   PendingChat? _pendingChat;
 
+  /// Guards [_handleBack] against a second press landing mid round trip to the web app.
+  bool _handlingBack = false;
+
   /// Last insets handed to the web app, so [didChangeMetrics] can skip the frames that changed
   /// nothing it cares about.
   EdgeInsets? _sentSafeAreaInsets;
@@ -393,16 +396,49 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     );
   }
 
-  Future<void> _handleBack() async {
-    // Back inside the web app first, so it does not exit the app from a sub page and force a cold
-    // start (which reads as "the app reloaded itself") on the next launch.
-    if (await controller?.canGoBack() ?? false) {
-      await controller?.goBack();
-      return;
+  /// Whether the web app dismissed something of its own, so back should stop here.
+  ///
+  /// Modals, sheets, the sidebar and the pickers are plain component state over there, none of it
+  /// backed by a history entry, so nothing but the web app can know they are open.
+  ///
+  /// The JS side has to answer synchronously: a promise does not marshal back through
+  /// evaluateJavascript, it arrives as an empty map and would read as "not handled".
+  Future<bool> _webAppHandledBack() async {
+    // The error overlay is covering the WebView, there is no web app to ask.
+    if (_loadError) return false;
+    try {
+      final result = await controller
+          ?.evaluateJavascript(
+            source: 'window.handleBackPress ? window.handleBackPress() : false',
+          )
+          .timeout(const Duration(milliseconds: 300));
+      return result == true;
+    } catch (e) {
+      // A wedged or half loaded page must never be able to trap the user in the app.
+      debugPrint('[chat_page] handleBackPress failed: $e');
+      return false;
     }
-    // Leaves the app, same as before. Navigator.maybePop would re-enter this callback, since the
-    // PopScope above already refused the pop.
-    await SystemNavigator.pop();
+  }
+
+  Future<void> _handleBack() async {
+    if (_handlingBack) return;
+    _handlingBack = true;
+    try {
+      // Whatever the web app has stacked on top of the page comes off first, an overlay is always
+      // above the page it was opened from.
+      if (await _webAppHandledBack()) return;
+      // Then back inside the web app, so it does not exit the app from a sub page and force a cold
+      // start (which reads as "the app reloaded itself") on the next launch.
+      if (await controller?.canGoBack() ?? false) {
+        await controller?.goBack();
+        return;
+      }
+      // Leaves the app, same as before. Navigator.maybePop would re-enter this callback, since the
+      // PopScope above already refused the pop.
+      await SystemNavigator.pop();
+    } finally {
+      _handlingBack = false;
+    }
   }
 
   @override

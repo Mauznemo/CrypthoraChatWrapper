@@ -45,6 +45,10 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
   /// A chat to open that arrived before the page was ready to be told about it.
   PendingChat? _pendingChat;
 
+  /// Last insets handed to the web app, so [didChangeMetrics] can skip the frames that changed
+  /// nothing it cares about.
+  EdgeInsets? _sentSafeAreaInsets;
+
   InAppWebViewSettings get _webViewSettings => InAppWebViewSettings(
     useHybridComposition: true,
     hardwareAcceleration: true,
@@ -277,25 +281,48 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
     }
   }
 
+  @override
+  void didChangeMetrics() {
+    // MediaQuery has not been rebuilt yet when this fires, so the new insets are only readable
+    // after the frame.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      // Rotation, a switch between gesture and 3 button navigation, a cutout change - but also
+      // every frame of the keyboard animation, so unchanged insets are not worth a round trip.
+      if (MediaQuery.of(context).padding == _sentSafeAreaInsets) return;
+      _injectFlutterInfo();
+    });
+  }
+
   /// The push identifier the web app registers with the server, only one provider is ever active.
   String get _pushGlobals =>
       'window.ntfyTopic = "${_usesFcm ? '' : (_topic ?? '')}";\n'
       'window.fcmToken = "${_usesFcm ? (_fcmToken ?? '') : ''}";';
 
+  /// The insets the web app pads itself with, as a JS assignment.
+  ///
+  /// Also injected at document start, because the notification below only reaches a web app that
+  /// has already hydrated. The page finishing its load before its route chunk has run is a real
+  /// ordering (SvelteKit imports routes dynamically, and `load` does not wait for those), and it
+  /// used to leave the web app on the zeroes it starts with for the rest of the page's life.
+  String _safeAreaGlobals(EdgeInsets padding) =>
+      'window.flutterSafeAreaInsets = {'
+      'top: ${padding.top},'
+      'bottom: ${padding.bottom},'
+      'left: ${padding.left},'
+      'right: ${padding.right}'
+      '};';
+
   Future<void> _injectFlutterInfo() async {
     final padding = MediaQuery.of(context).padding;
+    _sentSafeAreaInsets = padding;
 
     final data =
         '''
             window.isFlutterWebView = true;
             window.wrapperVersion = "${_packageInfo?.version ?? 'Unknown'}";
             $_pushGlobals
-            window.flutterSafeAreaInsets = {
-              top: ${padding.top},
-              bottom: ${padding.bottom},
-              left: ${padding.left},
-              right: ${padding.right}
-            }
+            ${_safeAreaGlobals(padding)}
           ''';
 
     await controller?.evaluateJavascript(source: data);
@@ -401,12 +428,14 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                         _registerJavaScriptHandlers();
                       },
                       initialUserScripts: UnmodifiableListView<UserScript>([
-                        // Set before the page runs, it registers for push on mount
+                        // Set before the page runs: it registers for push on mount, and reads the
+                        // insets while hydrating.
                         UserScript(
                           source:
                               """
                                 window.isFlutterWebView = true;
                                 $_pushGlobals
+                                ${_safeAreaGlobals(MediaQuery.of(context).padding)}
                           """,
                           injectionTime:
                               UserScriptInjectionTime.AT_DOCUMENT_START,
@@ -418,14 +447,17 @@ class _ChatPageState extends State<ChatPage> with WidgetsBindingObserver {
                       },
                       onLoadStop:
                           (InAppWebViewController webController, WebUri? url) async {
+                            // Runs even without a push token: the web app still has to be told
+                            // how to pad itself.
+                            await _injectFlutterInfo();
+
                             if (!_isPushRegistered) {
                               developer.log(
-                                'Missing push token, not injecting',
+                                'Missing push token, not delivering pending chat',
                                 name: 'chat_page',
                               );
                               return;
                             }
-                            await _injectFlutterInfo();
 
                             final pending = _pendingChat;
                             if (pending != null) {
